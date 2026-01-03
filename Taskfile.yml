@@ -15,6 +15,19 @@ tasks:
       # The app will read its own .env file
       - go run ./cmd/api
 
+  # --- New Test Tasks ---
+  test:
+    desc: "Run all go tests"
+    cmds:
+      - go test -v -race -cover ./...
+
+#  test-watch:
+#    desc: "Watch for file changes and re-run tests automatically"
+#    cmds:
+#      # This requires 'watchexec' to be installed
+#      # (Install with: brew install watchexec)
+#      - watchexec -r -e .go -- task test
+
   # --- Docker Service Tasks ---
   db-up:
     desc: "Start all database containers"
