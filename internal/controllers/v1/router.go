@@ -3,6 +3,7 @@ package v1
 import (
 	"CabBookingService/internal/services"
 	"CabBookingService/internal/services/queue"
+	"context"
 	"net/http"
 
 	"CabBookingService/internal/config"
@@ -40,6 +41,9 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 		// We can use Fatal here because if the consumer fails, the app is broken.
 		log.Fatal().Err(err).Msg("Failed to start Driver Matching Consumer")
 	}
+
+	schedulingService := services.NewSchedulingService(bookingRepo, messageQueue)
+	schedulingService.Start(context.Background())
 
 	// 5. Inject Queue into Booking Service
 	bookingService := services.NewBookingService(bookingRepo, driverRepo, passengerRepo, reviewRepo, otpService, locationService, paymentService, messageQueue)
@@ -82,6 +86,7 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 			r.Post("/{bookingId}/cancel", driverHandler.CancelBooking)
 			r.Post("/{bookingId}/start", driverHandler.StartRide)
 			r.Post("/{bookingId}/end", driverHandler.EndRide)
+			r.Patch("/availability", driverHandler.ToggleAvailability)
 		})
 
 		r.Put("/location/update", locationHandler.UpdateDriverLocation)

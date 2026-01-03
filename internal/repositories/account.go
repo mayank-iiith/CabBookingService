@@ -1,9 +1,10 @@
 package repositories
 
 import (
+	"context"
+
 	"CabBookingService/internal/db"
 	"CabBookingService/internal/models"
-	"context"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -16,6 +17,7 @@ type AccountRepository interface {
 	// Create We don't necessarily need a separate Create here as AuthService handles it transactionally,
 	// but it's good practice to have.
 	Create(ctx context.Context, account *models.Account) error
+	AddRole(ctx context.Context, accountID uuid.UUID, role models.Role) error
 }
 
 type gormAccountRepository struct {
@@ -57,4 +59,15 @@ func (r *gormAccountRepository) GetByID(ctx context.Context, id uuid.UUID) (*mod
 		return nil, err
 	}
 	return &account, nil
+}
+
+func (r *gormAccountRepository) AddRole(ctx context.Context, accountID uuid.UUID, role models.Role) error {
+	tx := db.NewGormTx(ctx, r.db)
+
+	// GORM association mode handles the many-to-many insert into 'account_roles'
+	// We only need the ID to update the association. GORM will use this ID to insert a row into the 'account_roles' join table.
+	var account models.Account
+	account.ID = accountID
+
+	return tx.Model(&account).Association("Roles").Append(&role)
 }

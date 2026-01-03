@@ -57,148 +57,197 @@ func NewAuthService(
 	}
 }
 
-func (a authService) RegisterPassenger(ctx context.Context, username, password, name, phoneNumber string) (*models.Passenger, error) {
-	// 1. Check if username already exists
-	if _, err := a.accountRepo.GetByUsername(ctx, username); err == nil {
-		return nil, ErrUsernameAlreadyExists
-	}
-
-	// 2. Fetch Roles
+func (a *authService) RegisterPassenger(ctx context.Context, username, password, name, phoneNumber string) (*models.Passenger, error) {
+	// 1. Fetch Role
 	role, err := a.roleRepo.GetByName(ctx, "ROLE_PASSENGER")
 	if err != nil {
 		return nil, errors.New("system error: passenger role not found")
 	}
 
-	// 3. Hash Password
-	hashedPassword, err := GenerateHashFromPassword(password)
-	if err != nil {
+	// 2. Check for Existing Account, We preload roles here to ensure the duplicate check works
+	account, err := a.accountRepo.GetByUsername(ctx, username)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 
-	// 4. Prepare Models
+	// Flag to track logic
+	isExistingAccount := err == nil
+
 	now := time.Now().UTC()
 
-	account := models.Account{
-		BaseModel: models.BaseModel{
-			ID:        uuid.New(),
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		Username: username,
-		Password: hashedPassword,
-		Roles:    []models.Role{*role},
+	// Validations before starting transaction
+	if isExistingAccount {
+		// A.1 Verify Password
+		if err := CompareHashAndPassword(account.Password, password); err != nil {
+			return nil, errors.New("username exists: incorrect password provided to link account")
+		}
+		// A.2 Check Duplicate Role
+		for _, r := range account.Roles {
+			if r.Name == "ROLE_PASSENGER" {
+				// They are already a passenger, we can't register them again
+				return nil, errors.New("passenger is already registered as a driver")
+			}
+		}
+	} else {
+		// B.1 Prepare New Account
+		hashedPassword, err := GenerateHashFromPassword(password)
+		if err != nil {
+			return nil, err
+		}
+		account = &models.Account{
+			BaseModel: models.BaseModel{ID: uuid.New(), CreatedAt: now, UpdatedAt: now},
+			Username:  username,
+			Password:  hashedPassword,
+			Roles:     []models.Role{*role},
+		}
 	}
 
-	passenger := models.Passenger{
-		BaseModel: models.BaseModel{
-			ID:        uuid.New(),
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
+	// 3. Prepare Passenger Profile
+	passenger := &models.Passenger{
+		BaseModel:   models.BaseModel{ID: uuid.New(), CreatedAt: now, UpdatedAt: now},
 		AccountId:   account.ID,
 		Name:        name,
 		PhoneNumber: phoneNumber,
 	}
 
-	// 5. Transactionally save Account and Passenger
+	// 4. Execute Atomic Transaction
+	// We use the transaction 'tx' for ALL writes to ensure either everything saves or nothing saves.
 	err = db.NewGormTx(ctx, a.db).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&account).Error; err != nil {
+		if isExistingAccount {
+			// Link the Role to the existing Account
+			if err := tx.Model(account).Association("Roles").Append(role); err != nil {
+				return err
+			}
+		} else {
+			// Create the new Account
+			if err := tx.Create(account).Error; err != nil {
+				return err
+			}
+		}
+
+		// Create the Passenger Profile
+		if err := tx.Create(passenger).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&passenger).Error; err != nil {
-			return err
-		}
+
 		return nil
 	})
+
 	if err != nil {
 		log.Error().Err(err).Str("username", username).Msg("Failed to register passenger")
 		return nil, err
 	}
 
-	passenger.Account = account
+	// Populate account for return
+	passenger.Account = *account
 	log.Info().Str("username", username).Msg("New passenger registered")
-	return &passenger, nil
+	return passenger, nil
 }
 
-func (a authService) RegisterDriver(ctx context.Context, username, password, name, phone, plate, carModel string) (*models.Driver, error) {
-	// 1. Check if username already exists
-	if _, err := a.accountRepo.GetByUsername(ctx, username); err == nil {
-		return nil, ErrUsernameAlreadyExists
-	}
-
-	// 2. Fetch Roles
+func (a *authService) RegisterDriver(ctx context.Context, username, password, name, phone, plate, carModel string) (*models.Driver, error) {
+	// 1. Fetch Role
 	role, err := a.roleRepo.GetByName(ctx, "ROLE_DRIVER")
 	if err != nil {
 		return nil, errors.New("system error: driver role not found")
 	}
 
-	// 3. Hash Password
-	hashedPassword, err := GenerateHashFromPassword(password)
-	if err != nil {
+	// 2. Check for Existing Account, We preload roles here to ensure the duplicate check works
+	account, err := a.accountRepo.GetByUsername(ctx, username)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 
-	// 4. Prepare Models
+	// Flag to track logic
+	isExistingAccount := err == nil
+
 	now := time.Now().UTC()
 
-	account := models.Account{
-		BaseModel: models.BaseModel{
-			ID:        uuid.New(),
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		Username: username,
-		Password: hashedPassword,
-		Roles:    []models.Role{*role},
+	// Validations before starting transaction
+	if isExistingAccount {
+		// A.1 Verify Password
+		if err := CompareHashAndPassword(account.Password, password); err != nil {
+			return nil, errors.New("username exists: incorrect password provided to link account")
+		}
+		// A.2 Check Duplicate Role
+		for _, r := range account.Roles {
+			if r.Name == "ROLE_DRIVER" {
+				// They are already a driver, we can't register them again
+				return nil, errors.New("user is already registered as a driver")
+			}
+		}
+	} else {
+		// B.1 Prepare New Account
+		hashedPassword, err := GenerateHashFromPassword(password)
+		if err != nil {
+			return nil, err
+		}
+		account = &models.Account{
+			BaseModel: models.BaseModel{ID: uuid.New(), CreatedAt: now, UpdatedAt: now},
+			Username:  username,
+			Password:  hashedPassword,
+			Roles:     []models.Role{*role},
+		}
 	}
 
-	driver := models.Driver{
-		BaseModel: models.BaseModel{
-			ID:        uuid.New(),
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
+	// 3. Prepare Passenger Profile
+	driver := &models.Driver{
+		BaseModel:   models.BaseModel{ID: uuid.New(), CreatedAt: now, UpdatedAt: now},
 		AccountId:   account.ID,
 		Name:        name,
 		PhoneNumber: phone,
 	}
 
+	// 4. Prepare Car Profile
 	car := models.Car{
-		BaseModel: models.BaseModel{
-			ID:        uuid.New(),
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
+		BaseModel:     models.BaseModel{ID: uuid.New(), CreatedAt: now, UpdatedAt: now},
 		DriverId:      driver.ID,
 		PlateNumber:   plate,
 		BrandAndModel: carModel,
 	}
 
-	// 5. Transactionally save Account, Driver, and Car
+	// 5. Execute Atomic Transaction
+	// We use the transaction 'tx' for ALL writes to ensure either everything saves or nothing saves.
 	err = db.NewGormTx(ctx, a.db).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&account).Error; err != nil {
+		// Step 5a: Handle Account
+		if isExistingAccount {
+			// Link the Role to the existing Account
+			if err := tx.Model(account).Association("Roles").Append(role); err != nil {
+				return err
+			}
+		} else {
+			// Create the new Account
+			if err := tx.Create(account).Error; err != nil {
+				return err
+			}
+		}
+
+		// Step 5b: Create Driver
+		if err := tx.Create(driver).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&driver).Error; err != nil {
+
+		// Step 5c: Create Car
+		if err := tx.Create(car).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&car).Error; err != nil {
-			return err
-		}
+
 		return nil
 	})
+
 	if err != nil {
-		log.Error().Err(err).Str("username", username).Msg("Failed to register passenger")
+		log.Error().Err(err).Str("username", username).Msg("Failed to register driver")
 		return nil, err
 	}
 
-	driver.Account = account
+	// Populate fields for return
+	driver.Account = *account
 	driver.Car = car
-	log.Info().Str("username", username).Msg("New passenger registered")
-	return &driver, nil
+
+	log.Info().Str("username", username).Msg("New driver registered")
+	return driver, nil
 }
 
-func (a authService) Login(ctx context.Context, username, password string) (string, error) {
+func (a *authService) Login(ctx context.Context, username, password string) (string, error) {
 	account, err := a.accountRepo.GetByUsername(ctx, username)
 	if err != nil {
 		// Log failed login attempt (Security Audit)

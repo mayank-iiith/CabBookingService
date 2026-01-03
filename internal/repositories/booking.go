@@ -4,6 +4,7 @@ import (
 	"CabBookingService/internal/db"
 	"CabBookingService/internal/models"
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,6 +32,8 @@ type BookingRepository interface {
 	AssignDriverIfAvailable(ctx context.Context, bookingID uuid.UUID, driverID uuid.UUID) error
 
 	GetDueScheduledBookings(ctx context.Context, cutoff time.Time) ([]models.Booking, error)
+
+	AcceptBookingTransaction(ctx context.Context, bookingID, driverID uuid.UUID) error
 }
 
 type gormBookingRepository struct {
@@ -227,5 +230,37 @@ func (r *gormBookingRepository) GetDueScheduledBookings(ctx context.Context, cut
 		return nil, err
 	}
 
-	return nil, nil
+	return bookings, nil
+}
+
+func (r *gormBookingRepository) AcceptBookingTransaction(ctx context.Context, bookingID, driverID uuid.UUID) error {
+	tx := db.NewGormTx(ctx, r.db)
+
+	return tx.Transaction(func(tx *gorm.DB) error {
+		// 1. Assign Driver (Updates Booking Table)
+		// SQL: UPDATE bookings SET status='ACCEPTED', driver_id=? WHERE id=? AND status='REQUESTED'
+		res := tx.Model(&models.Booking{}).
+			Where("id = ? AND status = ?", bookingID, models.BookingStatusRequested).
+			Updates(map[string]interface{}{
+				"status":    models.BookingStatusAccepted,
+				"driver_id": driverID,
+			})
+
+		if res.Error != nil {
+			return res.Error
+		}
+
+		if res.RowsAffected == 0 {
+			return errors.New("booking is no longer available")
+		}
+
+		// 2. Mark Driver Unavailable (Updates Driver Table)
+		if err := tx.Model(&models.Driver{}).
+			Where("id = ?", driverID).
+			Update("is_available", false).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }

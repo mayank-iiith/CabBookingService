@@ -23,6 +23,9 @@ type BookingService interface {
 	RateRide(ctx context.Context, bookingID uuid.UUID, rating int, note string, isPassenger bool) error
 	GetPendingRides(ctx context.Context, driverAccountID uuid.UUID, pageNumber, limit int) ([]models.Booking, error)
 
+	// TODO: Move to DriverService?
+	ToggleDriverAvailability(ctx context.Context, driverAccountID uuid.UUID, available bool) error
+
 	// TODO: Add method AssignDriver(bookingID, driverID)
 }
 
@@ -153,24 +156,16 @@ func (b *bookingService) AcceptBooking(ctx context.Context, driverAccountID, boo
 		return errors.New("you are not authorized to accept this ride")
 	}
 
-	// 3. Atomic Assign (Solves Race Condition)
-	// We try to update ONLY if status is still REQUESTED.
-	err = b.bookingRepo.AssignDriverIfAvailable(ctx, bookingID, driver.ID)
-	if err != nil {
-		log.Warn().
-			Str("driver_id", driver.ID.String()).
-			Str("booking_id", bookingID.String()).
-			Msg("Failed to assign driver to booking - likely already assigned")
-		return errors.New("booking is no longer available or system error")
+	// 3. Accept Booking Transactionally (accept and assign driver, mark driver unavailable)
+	if err := b.bookingRepo.AcceptBookingTransaction(ctx, bookingID, driver.ID); err != nil {
+		return err
 	}
-
-	// Log success
 	log.Info().
 		Str("booking_id", bookingID.String()).
 		Str("driver_id", driver.ID.String()).
 		Msg("Booking accepted by driver")
 
-	return b.driverRepo.UpdateAvailability(ctx, driver.ID, false)
+	return nil
 }
 
 // CancelBooking Driver cancels a ride
@@ -351,4 +346,15 @@ func (b *bookingService) GetPendingRides(ctx context.Context, driverAccountID uu
 
 	// 2. Fetch Pending Rides
 	return b.bookingRepo.GetPendingBookingsForDriver(ctx, driver.ID, limit, offset)
+}
+
+func (b *bookingService) ToggleDriverAvailability(ctx context.Context, driverAccountID uuid.UUID, available bool) error {
+	// 1. Get Driver Profile from Account ID
+	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Update Availability
+	return b.driverRepo.UpdateAvailability(ctx, driver.ID, available)
 }

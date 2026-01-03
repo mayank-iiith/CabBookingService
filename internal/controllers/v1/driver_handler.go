@@ -205,3 +205,40 @@ func (h *DriverHandler) ListPendingRides(w http.ResponseWriter, r *http.Request)
 
 	helper.RespondWithJSON(w, http.StatusOK, resp)
 }
+
+type ToggleAvailabilityRequest struct {
+	Available bool `json:"available"`
+}
+
+// ToggleAvailability - PATCH /v1/driver/availability
+func (h *DriverHandler) ToggleAvailability(w http.ResponseWriter, r *http.Request) {
+	// 1. Get Account
+	account, ok := r.Context().Value(AccountKey).(*models.Account)
+	if !ok {
+		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// 2. Parse Request
+	var req ToggleAvailabilityRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		helper.RespondWithError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	// 3. Call Service
+	err := h.bookingService.ToggleDriverAvailability(r.Context(), account.ID, req.Available)
+	if err != nil {
+		helper.RespondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 4. Respond
+	statusMsg := "offline"
+	if req.Available {
+		statusMsg = "online"
+	}
+	helper.RespondWithJSON(w, http.StatusOK, map[string]string{
+		"message": "Driver is now " + statusMsg,
+	})
+}
