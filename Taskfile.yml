@@ -1,0 +1,51 @@
+version: '3'
+
+# This tells Task to load the .env file for ALL tasks
+dotenv: [".env"]
+
+# This creates a variable for the DSN, built from the .env file
+vars:
+  DB_DSN: "postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_DB}}?sslmode=disable"
+
+tasks:
+  # ... (run, test) ...
+  run:
+    desc: "Run the main application"
+    cmds:
+      # The app will read its own .env file
+      - go run ./cmd/api
+
+  # --- Docker Service Tasks ---
+  db-up:
+    desc: "Start all database containers"
+    cmds:
+      - docker-compose up -d postgres
+
+  db-down:
+    desc: "Stop all database containers"
+    cmds:
+      - docker-compose down
+
+  db-up-postgres:
+    desc: "Start only the Postgres container"
+    cmds:
+      - docker-compose up -d postgres # <-- Changed from 'db'
+
+  # --- Migration Tasks (Postgres) ---
+  migrate-up:
+    desc: "Run all 'up' migrations for Postgres"
+    deps: [db-up-postgres]
+    cmds:
+      # Use the DSN variable we defined above
+      - migrate -database '{{.DB_DSN}}' -path 'internal/db/migrations' up
+
+  migrate-down:
+    desc: "Roll back the last migration"
+    deps: [db-up]
+    cmds:
+      - migrate -database '{{.DB_DSN}}' -path 'internal/db/migrations' down
+
+  migrate-new:
+    desc: "Create new SQL migration files. usage: task migrate-new -- <name>"
+    cmds:
+      - migrate create -ext sql -dir internal/db/migrations -seq {{.CLI_ARGS}}
