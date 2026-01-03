@@ -1,11 +1,13 @@
 package services
 
 import (
+	"context"
+	"time"
+
+	"CabBookingService/internal/domain"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/util"
-	"context"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -32,7 +34,7 @@ func (s *paymentService) ProcessPayment(ctx context.Context, booking *models.Boo
 	amount := 5.0 + (distance * 2.0)
 
 	// 2. Get Payment Gateway (Default to "Cash" or "Stripe" seed data)
-	gateway, err := s.paymentRepo.GetGatewayByName(ctx, "Stripe")
+	gateway, err := s.paymentRepo.GetGatewayByName(ctx, domain.PaymentGatewayStripe)
 	if err != nil {
 		// TODO: Fallback to Cash or other gateway
 		return err

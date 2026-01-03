@@ -1,11 +1,13 @@
 package services
 
 import (
+	"context"
+	"time"
+
+	"CabBookingService/internal/domain"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services/queue"
-	"context"
-	"time"
 
 	"github.com/rs/zerolog/log"
 )
@@ -70,7 +72,7 @@ func (s schedulingService) processScheduledBookings(ctx context.Context) {
 
 		// 3. Push to Matching Queue
 		log.Info().Str("booking_id", booking.ID.String()).Msg("Activating scheduled booking")
-		if err := s.messageQueue.Publish(ctx, TopicDriverMatching, booking.ID); err != nil {
+		if err := s.messageQueue.Publish(ctx, domain.TopicDriverMatching, booking.ID); err != nil {
 			log.Error().Err(err).Str("booking_id", booking.ID.String()).Msg("Failed to publish to matching queue")
 		}
 

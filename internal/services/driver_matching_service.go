@@ -1,6 +1,7 @@
 package services
 
 import (
+	"CabBookingService/internal/domain"
 	"CabBookingService/internal/services/filters"
 	"context"
 	"fmt"
@@ -10,10 +11,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
-)
-
-const (
-	TopicDriverMatching = "DRIVER_MATCHING"
 )
 
 // DriverMatchingService defines the contract for driver matching services
@@ -49,11 +46,11 @@ func NewDriverMatchingService(
 }
 
 func (s *driverMatchingService) StartConsuming() error {
-	ch, err := s.queue.Subscribe(TopicDriverMatching)
+	ch, err := s.queue.Subscribe(domain.TopicDriverMatching)
 	if err != nil {
-		return fmt.Errorf("failed to subscribe to topic %s: %w", TopicDriverMatching, err)
+		return fmt.Errorf("failed to subscribe to topic %s: %w", domain.TopicDriverMatching, err)
 	}
-	log.Info().Str("topic", TopicDriverMatching).Msg("Subscribed to topic")
+	log.Info().Str("topic", domain.TopicDriverMatching).Msg("Subscribed to topic")
 
 	// Start a background goroutine to consume messages
 	// TODO: When service is closed we should also stop this goroutine gracefully

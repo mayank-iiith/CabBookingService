@@ -1,13 +1,14 @@
 package v1
 
 import (
-	"CabBookingService/internal/services"
-	"CabBookingService/internal/services/queue"
 	"context"
 	"net/http"
 
 	"CabBookingService/internal/config"
+	"CabBookingService/internal/domain"
 	"CabBookingService/internal/repositories"
+	"CabBookingService/internal/services"
+	"CabBookingService/internal/services/queue"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -71,7 +72,7 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 
 		// Booking routes
 		r.Route("/bookings", func(r chi.Router) {
-			r.Use(RequireRoleMiddleware("ROLE_PASSENGER")) // Only passengers can access these routes
+			r.Use(RequireRoleMiddleware(domain.RolePassenger)) // Only passengers can access these routes
 
 			r.Post("/", bookingHandler.CreateBooking)
 			//r.Get("/", bookingHandler.ListMyBookings)
@@ -79,7 +80,7 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 
 		// Driver routes
 		r.Route("/driver/bookings", func(r chi.Router) {
-			r.Use(RequireRoleMiddleware("ROLE_DRIVER")) // Only drivers can access these routes
+			r.Use(RequireRoleMiddleware(domain.RoleDriver)) // Only drivers can access these routes
 
 			r.Get("/pending", driverHandler.ListPendingRides)
 			r.Post("/{bookingId}/accept", driverHandler.AcceptBooking)

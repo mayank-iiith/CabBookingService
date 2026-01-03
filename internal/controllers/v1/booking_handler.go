@@ -2,6 +2,7 @@ package v1
 
 import (
 	"CabBookingService/internal/controllers/helper"
+	"CabBookingService/internal/domain"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/services"
 	"encoding/json"
@@ -26,23 +27,23 @@ func NewBookingHandler(bookingService services.BookingService) *BookingHandler {
 
 // CreateBookingRequest defines the expected JSON body for booking
 type CreateBookingRequest struct {
-	PickupLat  float64 `json:"pickup_lat"`
-	PickupLon  float64 `json:"pickup_lon"`
-	DropoffLat float64 `json:"dropoff_lat"`
-	DropoffLon float64 `json:"dropoff_lon"`
+	PickupLatitude   float64    `json:"pickup_latitude"`
+	PickupLongitude  float64    `json:"pickup_longitude"`
+	DropoffLatitude  float64    `json:"dropoff_latitude"`
+	DropoffLongitude float64    `json:"dropoff_longitude"`
+	ScheduledTime    *time.Time `json:"scheduled_time"`
 }
 
 // CreateBookingResponse defines the JSON response for a successful booking
 type CreateBookingResponse struct {
-	ID           string               `json:"id"`
-	Status       models.BookingStatus `json:"status"`
-	PickupLat    float64              `json:"pickup_lat"`
-	PickupLon    float64              `json:"pickup_lon"`
-	DropoffLat   float64              `json:"dropoff_lat"`
-	DropoffLon   float64              `json:"dropoff_lon"`
-	CreatedAt    time.Time            `json:"created_at"`
-	UpdatedAt    time.Time            `json:"updated_at"`
-	RideStartOTP *string              `json:"ride_start_otp,omitempty"`
+	ID         string               `json:"id"`
+	Status     models.BookingStatus `json:"status"`
+	PickupLat  float64              `json:"pickup_lat"`
+	PickupLon  float64              `json:"pickup_lon"`
+	DropoffLat float64              `json:"dropoff_lat"`
+	DropoffLon float64              `json:"dropoff_lon"`
+	CreatedAt  time.Time            `json:"created_at"`
+	UpdatedAt  time.Time            `json:"updated_at"`
 }
 
 func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
@@ -55,34 +56,45 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Add Authorization: Only passengers can book
 
+	// 2. Parse Request
 	var req CreateBookingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		helper.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
-	// TODO: Add Validations
+	// TODO: Add Validations (e.g. validate lat/long range)
 	//	if req.PickupLat == 0 || req.PickupLon == 0 || req.DropoffLat == 0 || req.DropoffLon == 0 {
 	//		helper.RespondWithError(w, http.StatusBadRequest, "All location fields are required")
 	//		return
 	//	}
 
-	booking, err := h.bookingService.CreateBooking(r.Context(), account.ID, req.PickupLat, req.PickupLon, req.DropoffLat, req.DropoffLon)
+	// 3. Construct Params
+	params := services.CreateBookingParams{
+		PassengerAccountID: account.ID,
+		PickupLatitude:     req.PickupLatitude,
+		PickupLongitude:    req.PickupLongitude,
+		DropoffLatitude:    req.DropoffLatitude,
+		DropoffLongitude:   req.DropoffLongitude,
+		ScheduledTime:      req.ScheduledTime,
+	}
+
+	// 4. Call Service
+	booking, err := h.bookingService.CreateBooking(r.Context(), params)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	resp := CreateBookingResponse{
-		ID:           booking.ID.String(),
-		Status:       booking.Status,
-		PickupLat:    booking.PickupLatitude,
-		PickupLon:    booking.PickupLongitude,
-		DropoffLat:   booking.DropoffLatitude,
-		DropoffLon:   booking.DropoffLongitude,
-		CreatedAt:    booking.CreatedAt,
-		UpdatedAt:    booking.UpdatedAt,
-		RideStartOTP: &booking.RideStartOTP.Code,
+		ID:         booking.ID.String(),
+		Status:     booking.Status,
+		PickupLat:  booking.PickupLatitude,
+		PickupLon:  booking.PickupLongitude,
+		DropoffLat: booking.DropoffLatitude,
+		DropoffLon: booking.DropoffLongitude,
+		CreatedAt:  booking.CreatedAt,
+		UpdatedAt:  booking.UpdatedAt,
 	}
 	helper.RespondWithJSON(w, http.StatusCreated, resp)
 }
@@ -130,10 +142,10 @@ func (h *BookingHandler) RateRide(w http.ResponseWriter, r *http.Request) {
 	isDriver := false
 	// Check loaded roles from Account
 	for _, role := range account.Roles {
-		if role.Name == "ROLE_PASSENGER" {
+		if role.Name == domain.RolePassenger {
 			isPassenger = true
 		}
-		if role.Name == "ROLE_DRIVER" {
+		if role.Name == domain.RoleDriver {
 			isDriver = true
 		}
 	}

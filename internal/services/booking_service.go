@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"CabBookingService/internal/domain"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services/queue"
@@ -13,8 +14,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Define the parameter struct
+
+type CreateBookingParams struct {
+	PassengerAccountID uuid.UUID
+	PickupLatitude     float64
+	PickupLongitude    float64
+	DropoffLatitude    float64
+	DropoffLongitude   float64
+	ScheduledTime      *time.Time
+	// Easy to add new fields later without breaking function signature
+}
+
 type BookingService interface {
-	CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64, scheduledTime *time.Time) (*models.Booking, error)
+	CreateBooking(ctx context.Context, params CreateBookingParams) (*models.Booking, error)
 	AcceptBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
 	CancelBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
 	StartRide(ctx context.Context, driverAccountID, bookingID uuid.UUID, otpCode string) error
@@ -62,9 +75,9 @@ func NewBookingService(
 }
 
 // CreateBooking Passenger requests a ride
-func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64, scheduledTime *time.Time) (*models.Booking, error) {
+func (b *bookingService) CreateBooking(ctx context.Context, params CreateBookingParams) (*models.Booking, error) {
 	// 1. Get Passenger Profile from Account ID
-	passenger, err := b.passengerRepo.GetByAccountID(ctx, passengerAccountID)
+	passenger, err := b.passengerRepo.GetByAccountID(ctx, params.PassengerAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +92,7 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 
 	status := models.BookingStatusRequested
 	// If scheduled time is > 20 mins from now, set as SCHEDULED
-	if scheduledTime != nil && scheduledTime.After(now.Add(20*time.Minute)) {
+	if params.ScheduledTime != nil && params.ScheduledTime.After(now.Add(20*time.Minute)) {
 		status = models.BookingStatusScheduled
 	}
 
@@ -94,11 +107,11 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 		Status:         status,
 		RideStartOTPId: &otp.ID,
 
-		PickupLatitude:   pickupLatitude,
-		PickupLongitude:  pickupLongitude,
-		DropoffLatitude:  dropoffLatitude,
-		DropoffLongitude: dropoffLongitude,
-		ScheduledTime:    scheduledTime,
+		PickupLatitude:   params.PickupLatitude,
+		PickupLongitude:  params.PickupLongitude,
+		DropoffLatitude:  params.DropoffLatitude,
+		DropoffLongitude: params.DropoffLongitude,
+		ScheduledTime:    params.ScheduledTime,
 	}
 
 	if err := b.bookingRepo.Create(ctx, booking); err != nil {
@@ -117,7 +130,7 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 	// This makes the API response fast (Fire and Forget)
 	// Only push to queue if status is REQUESTED
 	if booking.Status == models.BookingStatusRequested {
-		if err := b.messageQueue.Publish(ctx, TopicDriverMatching, booking.ID); err != nil {
+		if err := b.messageQueue.Publish(ctx, domain.TopicDriverMatching, booking.ID); err != nil {
 			// Log error but don't fail request
 			log.Error().Err(err).
 				Str("booking_id", booking.ID.String()).

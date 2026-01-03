@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"CabBookingService/internal/db"
+	"CabBookingService/internal/domain"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 
@@ -59,7 +60,7 @@ func NewAuthService(
 
 func (a *authService) RegisterPassenger(ctx context.Context, username, password, name, phoneNumber string) (*models.Passenger, error) {
 	// 1. Fetch Role
-	role, err := a.roleRepo.GetByName(ctx, "ROLE_PASSENGER")
+	role, err := a.roleRepo.GetByName(ctx, domain.RolePassenger)
 	if err != nil {
 		return nil, errors.New("system error: passenger role not found")
 	}
@@ -83,9 +84,9 @@ func (a *authService) RegisterPassenger(ctx context.Context, username, password,
 		}
 		// A.2 Check Duplicate Role
 		for _, r := range account.Roles {
-			if r.Name == "ROLE_PASSENGER" {
+			if r.Name == domain.RolePassenger {
 				// They are already a passenger, we can't register them again
-				return nil, errors.New("passenger is already registered as a driver")
+				return nil, errors.New("passenger is already registered as a passenger")
 			}
 		}
 	} else {
@@ -146,7 +147,7 @@ func (a *authService) RegisterPassenger(ctx context.Context, username, password,
 
 func (a *authService) RegisterDriver(ctx context.Context, username, password, name, phone, plate, carModel string) (*models.Driver, error) {
 	// 1. Fetch Role
-	role, err := a.roleRepo.GetByName(ctx, "ROLE_DRIVER")
+	role, err := a.roleRepo.GetByName(ctx, domain.RoleDriver)
 	if err != nil {
 		return nil, errors.New("system error: driver role not found")
 	}
@@ -170,7 +171,7 @@ func (a *authService) RegisterDriver(ctx context.Context, username, password, na
 		}
 		// A.2 Check Duplicate Role
 		for _, r := range account.Roles {
-			if r.Name == "ROLE_DRIVER" {
+			if r.Name == domain.RoleDriver {
 				// They are already a driver, we can't register them again
 				return nil, errors.New("user is already registered as a driver")
 			}
