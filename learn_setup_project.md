@@ -26,3 +26,14 @@ git add .
 
 # 3. Make your very first commit
 git commit -m "Initial commit: project structure, Docker, and Task setup"
+
+# --------------
+brew install go-task
+go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+
+
+- task db-up
+- task migrate-up
+- task run
+- task migrate-new -- create_bookings_table

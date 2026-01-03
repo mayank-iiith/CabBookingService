@@ -1,0 +1,222 @@
+basePath: /v1
+definitions:
+  CabBookingService_internal_models.BookingStatus:
+    enum:
+    - REQUESTED
+    - ACCEPTED
+    - STARTED
+    - COMPLETED
+    - CANCELLED
+    type: string
+    x-enum-varnames:
+    - BookingStatusRequested
+    - BookingStatusAccepted
+    - BookingStatusStarted
+    - BookingStatusCompleted
+    - BookingStatusCancelled
+  internal_controllers_v1.CreateBookingRequest:
+    properties:
+      dropoff_lat:
+        type: number
+      dropoff_lon:
+        type: number
+      pickup_lat:
+        type: number
+      pickup_lon:
+        type: number
+    type: object
+  internal_controllers_v1.CreateBookingResponse:
+    properties:
+      created_at:
+        type: string
+      dropoff_lat:
+        type: number
+      dropoff_lon:
+        type: number
+      id:
+        type: string
+      pickup_lat:
+        type: number
+      pickup_lon:
+        type: number
+      status:
+        $ref: '#/definitions/CabBookingService_internal_models.BookingStatus'
+      updated_at:
+        type: string
+    type: object
+  internal_controllers_v1.DriverActionResponse:
+    properties:
+      booking_id:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_controllers_v1.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  internal_controllers_v1.LoginResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  internal_controllers_v1.RegisterPassengerRequest:
+    properties:
+      name:
+        type: string
+      password:
+        type: string
+      phone_number:
+        type: string
+      username:
+        type: string
+    type: object
+  internal_controllers_v1.RegisterResponse:
+    properties:
+      id:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Cab Booking Backend Service in Go.
+  title: Cab Booking Service API
+  version: "1.0"
+paths:
+  /bookings:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Ride Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_controllers_v1.CreateBookingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_controllers_v1.CreateBookingResponse'
+      security:
+      - BearerAuth: []
+      summary: Request a new ride
+      tags:
+      - Passenger
+  /driver/bookings/{bookingId}/accept:
+    post:
+      parameters:
+      - description: Booking ID
+        in: path
+        name: bookingId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_controllers_v1.DriverActionResponse'
+      security:
+      - BearerAuth: []
+      summary: Accept a requested ride
+      tags:
+      - Driver
+  /driver/bookings/{bookingId}/cancel:
+    post:
+      parameters:
+      - description: Booking ID
+        in: path
+        name: bookingId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_controllers_v1.DriverActionResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel a ride (Driver)
+      tags:
+      - Driver
+  /driver/bookings/{bookingId}/end:
+    post:
+      parameters:
+      - description: Booking ID
+        in: path
+        name: bookingId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_controllers_v1.DriverActionResponse'
+      security:
+      - BearerAuth: []
+      summary: Complete a ride
+      tags:
+      - Driver
+  /driver/bookings/{bookingId}/start:
+    post:
+      parameters:
+      - description: Booking ID
+        in: path
+        name: bookingId
+        required: true
+        type: string
+      - description: 'OTP JSON: {\'
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_controllers_v1.DriverActionResponse'
+      security:
+      - BearerAuth: []
+      summary: Start a ride (Verify OTP)
+      tags:
+      - Driver
+  /login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_controllers_v1.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_controllers_v1.LoginResponse'
+      summary: Login and get JWT token
+      tags:
+      - Auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

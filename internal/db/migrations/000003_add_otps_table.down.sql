@@ -1,0 +1,2 @@
+ALTER TABLE bookings DROP COLUMN IF EXISTS ride_start_otp_id;
+DROP TABLE IF EXISTS otps;
