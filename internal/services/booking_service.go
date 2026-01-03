@@ -8,7 +8,6 @@ import (
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services/queue"
-	"CabBookingService/internal/util"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -21,7 +20,7 @@ type BookingService interface {
 	StartRide(ctx context.Context, driverAccountID, bookingID uuid.UUID, otpCode string) error
 	EndRide(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
 	RateRide(ctx context.Context, bookingID uuid.UUID, rating int, note string, isPassenger bool) error
-	GetPendingRides(ctx context.Context, driverAccountID uuid.UUID, pageNumber, limit int) ([]models.Booking, error)
+	GetPendingRides(ctx context.Context, driverAccountID uuid.UUID, limit, offset int) ([]models.Booking, error)
 
 	// TODO: Move to DriverService?
 	ToggleDriverAvailability(ctx context.Context, driverAccountID uuid.UUID, available bool) error
@@ -352,14 +351,12 @@ func (b *bookingService) RateRide(ctx context.Context, bookingID uuid.UUID, rati
 	return b.bookingRepo.SaveReviewAndRecalculatePassengerRating(ctx, bookingID, review)
 }
 
-func (b *bookingService) GetPendingRides(ctx context.Context, driverAccountID uuid.UUID, pageNumber, limit int) ([]models.Booking, error) {
+func (b *bookingService) GetPendingRides(ctx context.Context, driverAccountID uuid.UUID, limit, offset int) ([]models.Booking, error) {
 	// 1. Get Driver Profile from Account ID
 	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
 	if err != nil {
 		return nil, err
 	}
-
-	offset, limit := util.GetPageOffsetAndLimit(pageNumber, limit)
 
 	// 2. Fetch Pending Rides
 	return b.bookingRepo.GetPendingBookingsForDriver(ctx, driver.ID, limit, offset)

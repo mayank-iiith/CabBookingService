@@ -1,13 +1,12 @@
 package v1
 
 import (
+	"encoding/json"
+	"net/http"
+
 	"CabBookingService/internal/controllers/helper"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/services"
-	"CabBookingService/internal/util"
-	"encoding/json"
-	"fmt"
-	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -174,19 +173,16 @@ func (h *DriverHandler) ListPendingRides(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// TODO: Parse Query Params
-	page := 1
-	limit := util.DefaultPageSize
-	// (You can use strconv.Atoi on r.URL.Query().Get("page"), ignoring errors for brevity here)
+	// 2. Parse Pagination (Page/Size -> Limit/Offset)
+	// Example: ?page=2&page_size=10 -> limit=10, offset=10
+	limit, offset := helper.GetPaginationParams(r)
 
 	// 2. Call Service to get pending bookings
-	bookings, err := h.bookingService.GetPendingRides(r.Context(), account.ID, page, limit)
+	bookings, err := h.bookingService.GetPendingRides(r.Context(), account.ID, limit, offset)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	fmt.Println("bookings:", bookings)
 
 	// 3. Respond with bookings
 	var resp []CreateBookingResponse
