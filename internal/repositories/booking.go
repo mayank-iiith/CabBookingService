@@ -12,7 +12,7 @@ import (
 )
 
 // BookingRepository defines the methods for interacting with booking data.
-// By using an interface, our services can be tested with mocks
+// By using an interface, our services can be tested with mocks,
 // and we can easily swap GORM for another DB if needed.
 type BookingRepository interface {
 	Create(ctx context.Context, booking *models.Booking) error
@@ -29,11 +29,9 @@ type BookingRepository interface {
 
 	GetPendingBookingsForDriver(ctx context.Context, driverID uuid.UUID, limit, offset int) ([]models.Booking, error)
 
-	AssignDriverIfAvailable(ctx context.Context, bookingID uuid.UUID, driverID uuid.UUID) error
-
 	GetDueScheduledBookings(ctx context.Context, cutoff time.Time) ([]models.Booking, error)
 
-	AcceptBookingTransaction(ctx context.Context, bookingID, driverID uuid.UUID) error
+	AcceptBookingTransaction(ctx context.Context, bookingID, driverID uuid.UUID, otpID uuid.UUID) error
 }
 
 type gormBookingRepository struct {
@@ -190,30 +188,6 @@ func (r *gormBookingRepository) GetPendingBookingsForDriver(ctx context.Context,
 	return bookings, nil
 }
 
-// Implementation
-func (r *gormBookingRepository) AssignDriverIfAvailable(ctx context.Context, bookingID uuid.UUID, driverID uuid.UUID) error {
-	tx := db.NewGormTx(ctx, r.db)
-
-	// UPDATE bookings SET status='ACCEPTED', driver_id=?
-	// WHERE id=? AND status='REQUESTED'
-	result := tx.Model(&models.Booking{}).
-		Where("id = ? AND status = ?", bookingID, models.BookingStatusRequested).
-		Updates(map[string]interface{}{
-			"status":    models.BookingStatusAccepted,
-			"driver_id": driverID,
-		})
-
-	if result.Error != nil {
-		return result.Error
-	}
-
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound // Or custom error: "booking not available"
-	}
-
-	return nil
-}
-
 // GetDueScheduledBookings finds bookings that are in SCHEDULED status and ready to be processed
 func (r *gormBookingRepository) GetDueScheduledBookings(ctx context.Context, cutoff time.Time) ([]models.Booking, error) {
 	tx := db.NewGormTx(ctx, r.db)
@@ -233,7 +207,7 @@ func (r *gormBookingRepository) GetDueScheduledBookings(ctx context.Context, cut
 	return bookings, nil
 }
 
-func (r *gormBookingRepository) AcceptBookingTransaction(ctx context.Context, bookingID, driverID uuid.UUID) error {
+func (r *gormBookingRepository) AcceptBookingTransaction(ctx context.Context, bookingID, driverID uuid.UUID, otpID uuid.UUID) error {
 	tx := db.NewGormTx(ctx, r.db)
 
 	return tx.Transaction(func(tx *gorm.DB) error {
@@ -242,8 +216,9 @@ func (r *gormBookingRepository) AcceptBookingTransaction(ctx context.Context, bo
 		res := tx.Model(&models.Booking{}).
 			Where("id = ? AND status = ?", bookingID, models.BookingStatusRequested).
 			Updates(map[string]interface{}{
-				"status":    models.BookingStatusAccepted,
-				"driver_id": driverID,
+				"status":            models.BookingStatusAccepted,
+				"driver_id":         driverID,
+				"ride_start_otp_id": otpID,
 			})
 
 		if res.Error != nil {

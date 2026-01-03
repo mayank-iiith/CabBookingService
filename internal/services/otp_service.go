@@ -1,12 +1,14 @@
 package services
 
 import (
-	"CabBookingService/internal/models"
-	"CabBookingService/internal/repositories"
 	"context"
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 	"strconv"
 	"time"
+
+	"CabBookingService/internal/models"
+	"CabBookingService/internal/repositories"
 
 	"github.com/google/uuid"
 )
@@ -25,9 +27,12 @@ func NewOTPService(otpRepo repositories.OTPRepository) OTPService {
 }
 
 func (s *otpService) GenerateOTP(ctx context.Context, phoneNumber string) (*models.OTP, error) {
-	// Simple 4-digit random code
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	code := strconv.Itoa(1000 + r.Intn(9000))
+	// Secure 4-digit random code generation
+	n, err := rand.Int(rand.Reader, big.NewInt(9000))
+	if err != nil {
+		return nil, err
+	}
+	code := strconv.Itoa(int(n.Int64()) + 1000)
 
 	now := time.Now()
 

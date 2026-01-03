@@ -131,7 +131,6 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 	// when their scheduled time is near.
 	// So no need to push to queue now.
 
-	booking.RideStartOTP = otp
 	return booking, nil
 }
 
@@ -156,8 +155,26 @@ func (b *bookingService) AcceptBooking(ctx context.Context, driverAccountID, boo
 		return errors.New("you are not authorized to accept this ride")
 	}
 
+	// 3. Get Booking by ID
+	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
+	if err != nil {
+		return err
+	}
+
+	// 4. Get Passenger to generate OTP
+	passenger, err := b.passengerRepo.GetByID(ctx, booking.PassengerId) // Need to fetch passenger to get phone
+	if err != nil {
+		return err
+	}
+
+	// 5. Generate OTP now for Ride Start as the driver is assigned
+	otp, err := b.otpService.GenerateOTP(ctx, passenger.PhoneNumber)
+	if err != nil {
+		return err
+	}
+
 	// 3. Accept Booking Transactionally (accept and assign driver, mark driver unavailable)
-	if err := b.bookingRepo.AcceptBookingTransaction(ctx, bookingID, driver.ID); err != nil {
+	if err := b.bookingRepo.AcceptBookingTransaction(ctx, bookingID, driver.ID, otp.ID); err != nil {
 		return err
 	}
 	log.Info().
