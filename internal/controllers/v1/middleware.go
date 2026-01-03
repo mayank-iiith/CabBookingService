@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"CabBookingService/internal/models"
 	"context"
 	"fmt"
 	"net/http"
@@ -79,4 +80,34 @@ func AuthMiddleware(jwtSecret string, accountRepo repositories.AccountRepository
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// RequireRoleMiddleware checks if the user has the required role
+func RequireRoleMiddleware(requiredRole string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 1. Get account from context
+			account, ok := r.Context().Value(AccountKey).(*models.Account)
+			if !ok || account == nil {
+				helper.RespondWithError(w, http.StatusUnauthorized, "Account not found in context")
+				return
+			}
+
+			// 2. Check if the account has the required role
+			if !hasRole(account.Roles, requiredRole) {
+				helper.RespondWithError(w, http.StatusForbidden, "Insufficient permissions")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func hasRole(roles []models.Role, role string) bool {
+	for _, r := range roles {
+		if r.Name == role {
+			return true
+		}
+	}
+	return false
 }

@@ -31,7 +31,7 @@ type DriverActionResponse struct {
 	Message   string `json:"message"`
 }
 
-// AcceptBooking - POST /v1/driver/bookings/{id}/accept
+// AcceptBooking - POST /v1/driver/bookings/{bookingId}/accept
 func (h *DriverHandler) AcceptBooking(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
 	account, ok := r.Context().Value(AccountKey).(*models.Account)
@@ -62,14 +62,7 @@ func (h *DriverHandler) AcceptBooking(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CancelBooking - POST /v1/driver/bookings/:id/cancel
-// CancelBooking godoc
-// @Summary      Cancel a ride (Driver)
-// @Tags         Driver
-// @Security     BearerAuth
-// @Param        bookingId path string true "Booking ID"
-// @Success      200  {object}  DriverActionResponse
-// @Router       /driver/bookings/{bookingId}/cancel [post]
+// CancelBooking - POST /v1/driver/bookings/{bookingId}/cancel
 func (h *DriverHandler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
 	account, ok := r.Context().Value(AccountKey).(*models.Account)
@@ -100,15 +93,7 @@ func (h *DriverHandler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// StartRide - POST /v1/driver/bookings/:id/start
-// StartRide godoc
-// @Summary      Start a ride (Verify OTP)
-// @Tags         Driver
-// @Security     BearerAuth
-// @Param        bookingId path string true "Booking ID"
-// @Param        request body map[string]string true "OTP JSON: {\"otp\": \"1234\"}"
-// @Success      200  {object}  DriverActionResponse
-// @Router       /driver/bookings/{bookingId}/start [post]
+// StartRide - POST /v1/driver/bookings/{bookingId}/start
 func (h *DriverHandler) StartRide(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
 	account, ok := r.Context().Value(AccountKey).(*models.Account)
@@ -148,14 +133,7 @@ func (h *DriverHandler) StartRide(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// EndRide - POST /v1/driver/bookings/:id/end
-// EndRide godoc
-// @Summary      Complete a ride
-// @Tags         Driver
-// @Security     BearerAuth
-// @Param        bookingId path string true "Booking ID"
-// @Success      200  {object}  DriverActionResponse
-// @Router       /driver/bookings/{bookingId}/end [post]
+// EndRide - POST /v1/driver/bookings/{bookingId}/end
 func (h *DriverHandler) EndRide(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
 	account, ok := r.Context().Value(AccountKey).(*models.Account)
@@ -186,6 +164,7 @@ func (h *DriverHandler) EndRide(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListPendingRides - GET /v1/driver/bookings/pending
 func (h *DriverHandler) ListPendingRides(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
 	account, ok := r.Context().Value(AccountKey).(*models.Account)

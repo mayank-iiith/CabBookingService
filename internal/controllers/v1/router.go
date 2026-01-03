@@ -64,7 +64,7 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 
 		// Booking routes
 		r.Route("/bookings", func(r chi.Router) {
-			//r.Use(middleware.PassengerOnlyMiddleware) // TODO: Make sure only passengers can access these routes
+			r.Use(RequireRoleMiddleware("ROLE_PASSENGER")) // Only passengers can access these routes
 
 			r.Post("/", bookingHandler.CreateBooking)
 			//r.Get("/", bookingHandler.ListMyBookings)
@@ -72,7 +72,8 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 
 		// Driver routes
 		r.Route("/driver/bookings", func(r chi.Router) {
-			//r.Use(middleware.DriverOnlyMiddleware) // TODO: Make sure only drivers can access these routes
+			r.Use(RequireRoleMiddleware("ROLE_DRIVER")) // Only drivers can access these routes
+
 			r.Get("/pending", driverHandler.ListPendingRides)
 			r.Post("/{bookingId}/accept", driverHandler.AcceptBooking)
 			r.Post("/{bookingId}/cancel", driverHandler.CancelBooking)
