@@ -25,7 +25,7 @@ type BookingRepository interface {
 	SaveReviewAndRecalculateDriverRating(ctx context.Context, bookingID uuid.UUID, review *models.Review) error
 	SaveReviewAndRecalculatePassengerRating(ctx context.Context, bookingID uuid.UUID, review *models.Review) error
 
-	GetPendingBookingsForDriver(ctx context.Context, driverID uuid.UUID) ([]models.Booking, error)
+	GetPendingBookingsForDriver(ctx context.Context, driverID uuid.UUID, limit, offset int) ([]models.Booking, error)
 
 	AssignDriverIfAvailable(ctx context.Context, bookingID uuid.UUID, driverID uuid.UUID) error
 }
@@ -165,7 +165,7 @@ func (r *gormBookingRepository) SaveReviewAndRecalculatePassengerRating(ctx cont
 	})
 }
 
-func (r *gormBookingRepository) GetPendingBookingsForDriver(ctx context.Context, driverID uuid.UUID) ([]models.Booking, error) {
+func (r *gormBookingRepository) GetPendingBookingsForDriver(ctx context.Context, driverID uuid.UUID, limit, offset int) ([]models.Booking, error) {
 	tx := db.NewGormTx(ctx, r.db)
 
 	var bookings []models.Booking
@@ -173,6 +173,8 @@ func (r *gormBookingRepository) GetPendingBookingsForDriver(ctx context.Context,
 		Joins("JOIN booking_notified_drivers ON bookings.id = booking_notified_drivers.booking_id").
 		Where("booking_notified_drivers.driver_id = ?", driverID).
 		Where("bookings.status = ?", models.BookingStatusRequested).
+		Limit(limit).
+		Offset(offset).
 		Preload("Passenger").
 		Preload("Passenger.Account").
 		Find(&bookings).Error

@@ -4,6 +4,7 @@ import (
 	"CabBookingService/internal/controllers/helper"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/services"
+	"CabBookingService/internal/util"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -173,8 +174,13 @@ func (h *DriverHandler) ListPendingRides(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// TODO: Parse Query Params
+	page := 1
+	limit := util.DefaultPageSize
+	// (You can use strconv.Atoi on r.URL.Query().Get("page"), ignoring errors for brevity here)
+
 	// 2. Call Service to get pending bookings
-	bookings, err := h.bookingService.GetPendingRides(r.Context(), account.ID)
+	bookings, err := h.bookingService.GetPendingRides(r.Context(), account.ID, page, limit)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return

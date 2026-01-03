@@ -4,6 +4,7 @@ import (
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services/queue"
+	"CabBookingService/internal/util"
 	"context"
 	"errors"
 	"log"
@@ -20,7 +21,7 @@ type BookingService interface {
 	StartRide(ctx context.Context, driverAccountID, bookingID uuid.UUID, otpCode string) error
 	EndRide(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
 	RateRide(ctx context.Context, bookingID uuid.UUID, rating int, note string, isPassenger bool) error
-	GetPendingRides(ctx context.Context, driverAccountID uuid.UUID) ([]models.Booking, error)
+	GetPendingRides(ctx context.Context, driverAccountID uuid.UUID, pageNumber, limit int) ([]models.Booking, error)
 
 	// TODO: Add method AssignDriver(bookingID, driverID)
 }
@@ -258,13 +259,15 @@ func (b *bookingService) RateRide(ctx context.Context, bookingID uuid.UUID, rati
 	return b.bookingRepo.SaveReviewAndRecalculatePassengerRating(ctx, bookingID, review)
 }
 
-func (b *bookingService) GetPendingRides(ctx context.Context, driverAccountID uuid.UUID) ([]models.Booking, error) {
+func (b *bookingService) GetPendingRides(ctx context.Context, driverAccountID uuid.UUID, pageNumber, limit int) ([]models.Booking, error) {
 	// 1. Get Driver Profile from Account ID
 	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
 	if err != nil {
 		return nil, err
 	}
 
+	offset, limit := util.GetPageOffsetAndLimit(pageNumber, limit)
+
 	// 2. Fetch Pending Rides
-	return b.bookingRepo.GetPendingBookingsForDriver(ctx, driver.ID)
+	return b.bookingRepo.GetPendingBookingsForDriver(ctx, driver.ID, limit, offset)
 }
