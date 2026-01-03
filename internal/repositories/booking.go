@@ -4,6 +4,7 @@ import (
 	"CabBookingService/internal/db"
 	"CabBookingService/internal/models"
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -28,6 +29,8 @@ type BookingRepository interface {
 	GetPendingBookingsForDriver(ctx context.Context, driverID uuid.UUID, limit, offset int) ([]models.Booking, error)
 
 	AssignDriverIfAvailable(ctx context.Context, bookingID uuid.UUID, driverID uuid.UUID) error
+
+	GetDueScheduledBookings(ctx context.Context, cutoff time.Time) ([]models.Booking, error)
 }
 
 type gormBookingRepository struct {
@@ -206,4 +209,23 @@ func (r *gormBookingRepository) AssignDriverIfAvailable(ctx context.Context, boo
 	}
 
 	return nil
+}
+
+// GetDueScheduledBookings finds bookings that are in SCHEDULED status and ready to be processed
+func (r *gormBookingRepository) GetDueScheduledBookings(ctx context.Context, cutoff time.Time) ([]models.Booking, error) {
+	tx := db.NewGormTx(ctx, r.db)
+
+	var bookings []models.Booking
+	// We check for:
+	// 1. Status is 'SCHEDULED'
+	// 2. ScheduledTime is before or equal to the cutoff (e.g., Now + 15 mins)
+	// TODO: Take care of pagination if needed
+	err := tx.Model(&models.Booking{}).
+		Where("status = ? AND scheduled_time <= ?", models.BookingStatusScheduled, cutoff).
+		Find(&bookings).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }

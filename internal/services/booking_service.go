@@ -15,7 +15,7 @@ import (
 )
 
 type BookingService interface {
-	CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64) (*models.Booking, error)
+	CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64, scheduledTime *time.Time) (*models.Booking, error)
 	AcceptBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
 	CancelBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
 	StartRide(ctx context.Context, driverAccountID, bookingID uuid.UUID, otpCode string) error
@@ -33,6 +33,7 @@ type bookingService struct {
 	reviewRepo      repositories.ReviewRepository
 	otpService      OTPService
 	locationService LocationService
+	paymentService  PaymentService
 	messageQueue    queue.MessageQueue
 }
 
@@ -43,6 +44,7 @@ func NewBookingService(
 	reviewRepo repositories.ReviewRepository,
 	otpService OTPService,
 	locationService LocationService,
+	paymentService PaymentService,
 	messageQueue queue.MessageQueue,
 ) BookingService {
 	return &bookingService{
@@ -52,12 +54,13 @@ func NewBookingService(
 		reviewRepo:      reviewRepo,
 		otpService:      otpService,
 		locationService: locationService,
+		paymentService:  paymentService,
 		messageQueue:    messageQueue,
 	}
 }
 
 // CreateBooking Passenger requests a ride
-func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64) (*models.Booking, error) {
+func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64, scheduledTime *time.Time) (*models.Booking, error) {
 	// 1. Get Passenger Profile from Account ID
 	passenger, err := b.passengerRepo.GetByAccountID(ctx, passengerAccountID)
 	if err != nil {
@@ -72,6 +75,12 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 
 	now := time.Now()
 
+	status := models.BookingStatusRequested
+	// If scheduled time is > 20 mins from now, set as SCHEDULED
+	if scheduledTime != nil && scheduledTime.After(now.Add(20*time.Minute)) {
+		status = models.BookingStatusScheduled
+	}
+
 	// 3. Create Booking
 	booking := &models.Booking{
 		BaseModel: models.BaseModel{
@@ -80,13 +89,14 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 			UpdatedAt: now,
 		},
 		PassengerId:    passenger.ID,
-		Status:         models.BookingStatusRequested,
+		Status:         status,
 		RideStartOTPId: &otp.ID,
 
 		PickupLatitude:   pickupLatitude,
 		PickupLongitude:  pickupLongitude,
 		DropoffLatitude:  dropoffLatitude,
 		DropoffLongitude: dropoffLongitude,
+		ScheduledTime:    scheduledTime,
 	}
 
 	if err := b.bookingRepo.Create(ctx, booking); err != nil {
@@ -103,13 +113,20 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 	// --- ASYNC LOGIC ---
 	// Instead of calling location service directly, we push to queue
 	// This makes the API response fast (Fire and Forget)
-	if err := b.messageQueue.Publish(ctx, TopicDriverMatching, booking.ID); err != nil {
-		// Log error but don't fail request
-		log.Error().Err(err).
-			Str("booking_id", booking.ID.String()).
-			Msg("Failed to publish driver matching event")
-		// Don't fail the request, just log it (or implement retry)
+	// Only push to queue if status is REQUESTED
+	if booking.Status == models.BookingStatusRequested {
+		if err := b.messageQueue.Publish(ctx, TopicDriverMatching, booking.ID); err != nil {
+			// Log error but don't fail request
+			log.Error().Err(err).
+				Str("booking_id", booking.ID.String()).
+				Msg("Failed to publish driver matching event")
+			// Don't fail the request, just log it (or implement retry)
+		}
 	}
+
+	// For scheduled rides, we rely on SchedulingService to pick them up later
+	// when their scheduled time is near.
+	// So no need to push to queue now.
 
 	booking.RideStartOTP = otp
 	return booking, nil
@@ -272,6 +289,14 @@ func (b *bookingService) EndRide(ctx context.Context, driverAccountID, bookingID
 		Str("booking_id", bookingID.String()).
 		Str("driver_id", driver.ID.String()).
 		Msg("Ride completed by driver")
+
+	// 3. --- TRIGGER PAYMENT ---
+	// This happens asynchronously in real life, but sync here for simplicity
+	if err := b.paymentService.ProcessPayment(ctx, booking); err != nil {
+		// Log error, but don't fail the ride completion.
+		// In real world, this would trigger a "Payment Failed" flow.
+		log.Error().Err(err).Msg("Payment processing failed")
+	}
 
 	return b.driverRepo.UpdateAvailability(ctx, driver.ID, true)
 }

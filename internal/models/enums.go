@@ -22,6 +22,7 @@ const (
 	BookingStatusStarted   BookingStatus = "STARTED"
 	BookingStatusCompleted BookingStatus = "COMPLETED"
 	BookingStatusCancelled BookingStatus = "CANCELLED"
+	BookingStatusScheduled BookingStatus = "SCHEDULED"
 )
 
 func (b BookingStatus) String() string {

@@ -22,11 +22,13 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 	bookingRepo := repositories.NewGormBookingRepository(db)
 	otpRepo := repositories.NewGormOTPRepository(db)
 	reviewRepo := repositories.NewGormReviewRepository(db)
+	paymentRepo := repositories.NewGormPaymentRepository(db)
 
 	// 2. Init Core Services
 	authService := services.NewAuthService(accountRepo, passengerRepo, driverRepo, roleRepo, db, cfg.JWTSecret, cfg.JWTExpiresIn)
 	otpService := services.NewOTPService(otpRepo)
-	locationService := services.NewNaiveLocationService()
+	locationService := services.NewNaiveLocationService(driverRepo)
+	paymentService := services.NewPaymentService(paymentRepo)
 
 	// 3. Init Queue
 	messageQueue := queue.NewInMemoryQueue()
@@ -40,7 +42,7 @@ func NewV1Router(cfg *config.Config, db *gorm.DB) http.Handler {
 	}
 
 	// 5. Inject Queue into Booking Service
-	bookingService := services.NewBookingService(bookingRepo, driverRepo, passengerRepo, reviewRepo, otpService, locationService, messageQueue)
+	bookingService := services.NewBookingService(bookingRepo, driverRepo, passengerRepo, reviewRepo, otpService, locationService, paymentService, messageQueue)
 
 	// 3. Init Handlers (Controller Layer)
 	userHandler := NewUserHandler(cfg, authService)

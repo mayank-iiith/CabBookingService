@@ -1,6 +1,7 @@
 package services
 
 import (
+	"CabBookingService/internal/services/filters"
 	"context"
 	"fmt"
 
@@ -25,6 +26,7 @@ type driverMatchingService struct {
 	locationService LocationService
 	bookingRepo     repositories.BookingRepository
 	driverRepo      repositories.DriverRepository
+	filters         []filters.DriverFilter
 }
 
 func NewDriverMatchingService(
@@ -38,6 +40,11 @@ func NewDriverMatchingService(
 		locationService: locationService,
 		bookingRepo:     bookingRepo,
 		driverRepo:      driverRepo,
+		filters: []filters.DriverFilter{
+			// Add filters here
+			filters.NewETABasedFilter(5.0), // Max 5km away
+			filters.NewGenderFilter(),
+		},
 	}
 }
 
@@ -95,9 +102,9 @@ func (s *driverMatchingService) handleDriverMatching(bookingID uuid.UUID) {
 
 	// 4. Apply Filters
 	validDrivers := candidateDrivers
-	//for _, filter := range s.filters {
-	//	validDrivers = filter.Filter(validDrivers, *booking)
-	//}
+	for _, filter := range s.filters {
+		validDrivers = filter.Filter(validDrivers, booking)
+	}
 
 	if len(validDrivers) == 0 {
 		log.Info().Str("booking_id", bookingID.String()).Msg("No matching drivers after filtering")

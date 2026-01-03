@@ -39,7 +39,7 @@ func (h *LocationHandler) UpdateDriverLocation(w http.ResponseWriter, r *http.Re
 	}
 
 	// 3. Update location via service
-	err := h.locationService.UpdateDriverLocation(account.ID, req.Latitude, req.Longitude)
+	err := h.locationService.UpdateDriverLocation(r.Context(), account.ID, req.Latitude, req.Longitude)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return

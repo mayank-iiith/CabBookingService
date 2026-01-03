@@ -26,6 +26,16 @@ type Driver struct {
 	// Rating
 	AverageRating float64 `gorm:"default:0.0"`
 	RatingCount   int     `gorm:"default:0"`
+
+	LastKnownLatitude  *float64
+	LastKnownLongitude *float64
+	// Helper struct for Go logic, not GORM
+	LastKnownLocation *ExactLocation `gorm:"-"`
+}
+
+type ExactLocation struct {
+	Latitude  float64
+	Longitude float64
 }
 
 func (*Driver) TableName() string {

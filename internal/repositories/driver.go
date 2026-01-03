@@ -15,6 +15,7 @@ type DriverRepository interface {
 	GetByAccountID(ctx context.Context, accountID uuid.UUID) (*models.Driver, error)
 	GetByAccountIDs(ctx context.Context, accountIDs []uuid.UUID) ([]models.Driver, error)
 	UpdateAvailability(ctx context.Context, driverID uuid.UUID, isAvailable bool) error
+	UpdateLocation(ctx context.Context, driverID uuid.UUID, lat, lon float64) error
 }
 
 type gormDriverRepository struct {
@@ -77,4 +78,14 @@ func (r *gormDriverRepository) UpdateAvailability(ctx context.Context, id uuid.U
 	return tx.Model(&models.Driver{}).
 		Where("id = ?", id).
 		Update("is_available", isAvailable).Error
+}
+
+func (r *gormDriverRepository) UpdateLocation(ctx context.Context, driverID uuid.UUID, lat, lon float64) error {
+	tx := db.NewGormTx(ctx, r.db)
+	return tx.Model(&models.Driver{}).
+		Where("id = ?", driverID).
+		Updates(map[string]interface{}{
+			"last_known_latitude":  lat,
+			"last_known_longitude": lon,
+		}).Error
 }

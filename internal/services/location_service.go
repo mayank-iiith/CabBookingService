@@ -1,8 +1,11 @@
 package services
 
 import (
-	"math"
+	"context"
 	"sync"
+
+	"CabBookingService/internal/repositories"
+	"CabBookingService/internal/util"
 
 	"github.com/google/uuid"
 )
@@ -14,24 +17,28 @@ type driverLocation struct {
 }
 
 type LocationService interface {
-	UpdateDriverLocation(driverID uuid.UUID, latitude, longitude float64) error
+	UpdateDriverLocation(ctx context.Context, driverID uuid.UUID, latitude, longitude float64) error
 	GetNearbyDrivers(lat, lon float64, radiusKm float64) []uuid.UUID
 }
 
 // NaiveLocationService uses a map and loops through all drivers.
 // TODO: Replace this with a QuadTree for production (O(N) vs O(log N))
 type naiveLocationService struct {
+	driverRepo      repositories.DriverRepository
 	driverLocations map[uuid.UUID]driverLocation
 	mu              sync.RWMutex
 }
 
-func NewNaiveLocationService() LocationService {
+func NewNaiveLocationService(driverRepo repositories.DriverRepository) LocationService {
 	return &naiveLocationService{
+		driverRepo:      driverRepo,
 		driverLocations: make(map[uuid.UUID]driverLocation),
 	}
 }
 
-func (s *naiveLocationService) UpdateDriverLocation(driverID uuid.UUID, latitude, longitude float64) error {
+func (s *naiveLocationService) UpdateDriverLocation(ctx context.Context, driverID uuid.UUID, latitude, longitude float64) error {
+
+	// 1. Update in memory naive driver location map (fast)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -40,7 +47,10 @@ func (s *naiveLocationService) UpdateDriverLocation(driverID uuid.UUID, latitude
 		longitude: longitude,
 	}
 
-	return nil
+	// 2. Persist to DB (Reliable)
+	// We do this async or strictly depending on requirements.
+	// For now simply do it synchronously.
+	return s.driverRepo.UpdateLocation(ctx, driverID, latitude, longitude)
 }
 
 func (s *naiveLocationService) GetNearbyDrivers(lat, lon float64, radiusKm float64) []uuid.UUID {
@@ -51,28 +61,9 @@ func (s *naiveLocationService) GetNearbyDrivers(lat, lon float64, radiusKm float
 
 	// Naive Approach: Check every single driver
 	for id, location := range s.driverLocations {
-		if distanceKm(lat, lon, location.latitude, location.longitude) <= radiusKm {
+		if util.DistanceKm(lat, lon, location.latitude, location.longitude) <= radiusKm {
 			nearbyDrivers = append(nearbyDrivers, id)
 		}
 	}
 	return nearbyDrivers
-}
-
-// distanceKm calculates the distance between two points using the Haversine formula
-// (Or a simplified version for small distances)
-// TODO: Learn about Haversine formula and implement it properly
-func distanceKm(lat1, lon1, lat2, lon2 float64) float64 {
-	// Radius of the Earth in km
-	const R = 6371.0
-
-	dLat := (lat2 - lat1) * (math.Pi / 180.0)
-	dLon := (lon2 - lon1) * (math.Pi / 180.0)
-
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Cos(lat1*(math.Pi/180.0))*math.Cos(lat2*(math.Pi/180.0))*
-			math.Sin(dLon/2)*math.Sin(dLon/2)
-
-	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-
-	return R * c
 }

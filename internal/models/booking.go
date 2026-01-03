@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -35,6 +37,8 @@ type Booking struct {
 
 	ReviewByDriverId *uuid.UUID `gorm:"type:uuid"`
 	ReviewByDriver   *Review    `gorm:"foreignKey:ReviewByDriverId"`
+
+	ScheduledTime *time.Time // Nullable for immediate rides
 }
 
 func (*Booking) TableName() string {
