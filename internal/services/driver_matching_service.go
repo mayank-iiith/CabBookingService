@@ -1,13 +1,14 @@
 package services
 
 import (
-	"CabBookingService/internal/repositories"
-	"CabBookingService/internal/services/queue"
 	"context"
 	"fmt"
-	"log"
+
+	"CabBookingService/internal/repositories"
+	"CabBookingService/internal/services/queue"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -45,15 +46,17 @@ func (s *driverMatchingService) StartConsuming() error {
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to topic %s: %w", TopicDriverMatching, err)
 	}
+	log.Info().Str("topic", TopicDriverMatching).Msg("Subscribed to topic")
 
 	// Start a background goroutine to consume messages
+	// TODO: When service is closed we should also stop this goroutine gracefully
 	go func() {
-		log.Println("[DriverMatching] Started consuming messages...")
+		log.Info().Msg("[DriverMatching] Started consuming messages...")
 		for msg := range ch {
 			// Type Assertion
 			bookingID, ok := msg.(uuid.UUID)
 			if !ok {
-				log.Printf("[DriverMatching] Invalid message format received, msg: %v\n", msg)
+				log.Warn().Interface("msg", msg).Msg("[DriverMatching] Invalid message format received")
 				continue
 				// TODO: In production, consider dead-letter queue or alerting
 			}
@@ -64,28 +67,29 @@ func (s *driverMatchingService) StartConsuming() error {
 }
 
 func (s *driverMatchingService) handleDriverMatching(bookingID uuid.UUID) {
-	log.Printf("[DriverMatching] Handling driver matching for booking ID: %s\n", bookingID)
+	log.Info().Str("booking_id", bookingID.String()).Msg("Handling driver matching")
+
 	ctx := context.Background() // TODO: Either pass context from message or create with timeout
 
 	// 1. Fetch Booking
 	booking, err := s.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
-		log.Printf("Error fetching booking %s: %v", bookingID, err)
+		log.Error().Err(err).Str("booking_id", bookingID.String()).Msg("Failed to fetch booking")
 		return
 	}
 
 	// 2. Find nearby drivers using pickup location from booking
-	radiusToSearch := 2.0 // in km
+	radiusToSearch := 2.0 // in km // TODO: Make configurable
 	nearbyDriverIDs := s.locationService.GetNearbyDrivers(booking.PickupLatitude, booking.PickupLongitude, radiusToSearch)
 	if len(nearbyDriverIDs) == 0 {
-		log.Printf("No drivers nearby for booking %s", bookingID)
+		log.Info().Str("booking_id", bookingID.String()).Msg("No drivers nearby")
 		return
 	}
 
 	// 3. Fetch Full Driver Profiles
 	candidateDrivers, err := s.driverRepo.GetByAccountIDs(ctx, nearbyDriverIDs)
 	if err != nil {
-		log.Printf("Error fetching driver profiles for booking %s: %v", bookingID, err)
+		log.Error().Err(err).Str("booking_id", bookingID.String()).Msg("Error fetching driver profiles")
 		return
 	}
 
@@ -96,21 +100,31 @@ func (s *driverMatchingService) handleDriverMatching(bookingID uuid.UUID) {
 	//}
 
 	if len(validDrivers) == 0 {
-		log.Printf("No matching drivers after filtering for booking %s", bookingID)
+		log.Info().Str("booking_id", bookingID.String()).Msg("No matching drivers after filtering")
 		return
 	}
 
 	if err := s.bookingRepo.AddNotifiedDrivers(ctx, bookingID, validDrivers); err != nil {
-		log.Printf("Error adding notified drivers for booking %s: %v", bookingID, err)
+		log.Error().Err(err).Str("booking_id", bookingID.String()).Msg("Error saving notified drivers")
 		return
 	}
 
 	// 5. Notify
-	log.Printf("Found %d matching drivers for booking %s. Notifying...", len(validDrivers), bookingID)
+	log.Info().
+		Str("booking_id", bookingID.String()).
+		Int("driver_count", len(candidateDrivers)).
+		Msg("Found matching drivers. Notifying...")
+
 	for _, d := range validDrivers {
 		// Mock Notification
-		log.Printf(">> Sending Push Notification to Driver: %s (Phone: %s)", d.Name, d.PhoneNumber)
+		// TODO: In a real app, this would be an async call to a notification service
 		// TODO: Integrate with real notification service (e.g., Firebase, Twilio)
 		// For now, we just log the notification
+		log.Info().
+			Str("booking_id", bookingID.String()).
+			Str("driver_id", d.ID.String()).
+			Str("driver_name", d.Name).
+			Str("phone", d.PhoneNumber).
+			Msg(">> Push Notification Sent")
 	}
 }

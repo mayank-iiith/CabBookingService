@@ -1,15 +1,17 @@
 package services
 
 import (
-	"CabBookingService/internal/db"
-	"CabBookingService/internal/models"
-	"CabBookingService/internal/repositories"
 	"context"
 	"errors"
 	"time"
 
+	"CabBookingService/internal/db"
+	"CabBookingService/internal/models"
+	"CabBookingService/internal/repositories"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -109,10 +111,12 @@ func (a authService) RegisterPassenger(ctx context.Context, username, password, 
 		return nil
 	})
 	if err != nil {
+		log.Error().Err(err).Str("username", username).Msg("Failed to register passenger")
 		return nil, err
 	}
 
 	passenger.Account = account
+	log.Info().Str("username", username).Msg("New passenger registered")
 	return &passenger, nil
 }
 
@@ -184,21 +188,27 @@ func (a authService) RegisterDriver(ctx context.Context, username, password, nam
 		return nil
 	})
 	if err != nil {
+		log.Error().Err(err).Str("username", username).Msg("Failed to register passenger")
 		return nil, err
 	}
 
 	driver.Account = account
 	driver.Car = car
+	log.Info().Str("username", username).Msg("New passenger registered")
 	return &driver, nil
 }
 
 func (a authService) Login(ctx context.Context, username, password string) (string, error) {
 	account, err := a.accountRepo.GetByUsername(ctx, username)
 	if err != nil {
+		// Log failed login attempt (Security Audit)
+		log.Warn().Str("username", username).Msg("Login failed: user not found")
 		return "", errors.New("invalid username or password")
 	}
 
 	if err := CompareHashAndPassword(account.Password, password); err != nil {
+		// Log failed login attempt
+		log.Warn().Str("username", username).Msg("Login failed: invalid password")
 		return "", errors.New("invalid username or password")
 	}
 
@@ -218,9 +228,14 @@ func (a authService) Login(ctx context.Context, username, password string) (stri
 
 	tokenString, err := token.SignedString([]byte(a.jwtSecret))
 	if err != nil {
+		log.Error().Err(err).Str("username", username).Msg("Failed to sign JWT token")
 		return "", err
 	}
 
+	log.Info().
+		Str("user_id", account.ID.String()).
+		Str("username", username).
+		Msg("User logged in successfully")
 	return tokenString, nil
 }
 

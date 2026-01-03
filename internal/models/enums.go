@@ -27,3 +27,8 @@ const (
 func (b BookingStatus) String() string {
 	return string(b)
 }
+
+func (b BookingStatus) IsCancellable() bool {
+	// Only REQUESTED and ACCEPTED bookings can be cancelled
+	return b == BookingStatusRequested || b == BookingStatusAccepted
+}

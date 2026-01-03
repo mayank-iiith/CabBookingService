@@ -3,10 +3,10 @@ package db
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gorm_logger "gorm.io/gorm/logger"
@@ -49,14 +49,13 @@ func NewGormDbConn(config PostgresConfig) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	log.Println("Database connection established.")
 
 	// 2. Configure Connection Pooling
 	db, err = applyPoolConfig(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply pool config: %w", err)
 	}
-	log.Println("Database connection established with connection pooling.")
+	log.Info().Msg("Database connection established with connection pooling")
 
 	return db, nil
 }
@@ -68,22 +67,16 @@ func applyPoolConfig(db *gorm.DB) (*gorm.DB, error) {
 	// We need to get the underlying *sql.DB object to configure the pool.
 	sqlDb, err := db.DB()
 	if err != nil {
-		log.Println("applyPoolConfig: db.DB() failed:", err)
-		//logger.WithError(err).Error("db.DB() failed")
 		return nil, err
 	}
 
 	poolMaxConnLifeTime, err := time.ParseDuration(pooledConfig.PoolMaxConnLifetime)
 	if err != nil {
-		log.Println("applyPoolConfig: time.ParseDuration PoolMaxConnLifetime failed:", err)
-		//logger.WithError(err).Error("time.ParseDuration PoolMaxConnLifetime failed")
 		return nil, err
 	}
 
 	poolMaxConnIdleTime, err := time.ParseDuration(pooledConfig.PoolMaxConnIdleTime)
 	if err != nil {
-		log.Println("applyPoolConfig: time.ParseDuration PoolMaxConnIdleTime failed:", err)
-		//logger.WithError(err).Error("time.ParseDuration PoolMaxConnIdleTime failed")
 		return nil, err
 	}
 
@@ -112,11 +105,13 @@ func NewGormTx(ctx context.Context, db *gorm.DB) *gorm.DB {
 		return nil
 	}
 
-	// if env is development, enable gorm debug logging
+	// Use GORM's default logger, but control verbosity via Global Level
+	// In Production (Info Level), 'Warn' will show slow queries.
+	// In Development (Debug Level), 'Info' will show all queries.
 	gormLogger := db.Logger.LogMode(gorm_logger.Warn)
 	if isDevelopmentEnv() {
 		// Log sparingly in high traffic, but useful for dev
-		log.Println("Gorm debug logging is enabled")
+		log.Info().Msg("Gorm debug logging is enabled")
 		gormLogger = db.Logger.LogMode(gorm_logger.Info)
 	}
 

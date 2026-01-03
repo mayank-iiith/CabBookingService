@@ -1,17 +1,17 @@
 package services
 
 import (
+	"context"
+	"errors"
+	"time"
+
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services/queue"
 	"CabBookingService/internal/util"
-	"context"
-	"errors"
-	"log"
-	"log/slog"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 type BookingService interface {
@@ -63,14 +63,12 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 	if err != nil {
 		return nil, err
 	}
-	slog.Debug("[BookingService] CreateBooking", slog.String("passengerID", passenger.ID.String()), slog.String("accountID", passengerAccountID.String()))
 
 	// 2. Generate OTP for ride start
 	otp, err := b.otpService.GenerateOTP(ctx, passenger.PhoneNumber)
 	if err != nil {
 		return nil, err
 	}
-	slog.Debug("[BookingService] Generated OTP", slog.String("otpID", otp.ID.String()), slog.String("passengerID", passenger.ID.String()), slog.String("accountID", passengerAccountID.String()), slog.String("otpCode", otp.Code))
 
 	now := time.Now()
 
@@ -92,15 +90,24 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 	}
 
 	if err := b.bookingRepo.Create(ctx, booking); err != nil {
+		log.Error().Err(err).Msg("Failed to create booking record")
 		return nil, err
 	}
-	slog.Debug("[BookingService] Created Booking", slog.String("bookingID", booking.ID.String()), slog.String("passengerID", passenger.ID.String()), slog.String("accountID", passengerAccountID.String()))
+
+	// Structured Log for traceability
+	log.Info().
+		Str("booking_id", booking.ID.String()).
+		Str("passenger_id", passenger.ID.String()).
+		Msg("Booking created successfully")
 
 	// --- ASYNC LOGIC ---
 	// Instead of calling location service directly, we push to queue
 	// This makes the API response fast (Fire and Forget)
 	if err := b.messageQueue.Publish(ctx, TopicDriverMatching, booking.ID); err != nil {
-		log.Printf("Failed to publish driver matching event: %v", err)
+		// Log error but don't fail request
+		log.Error().Err(err).
+			Str("booking_id", booking.ID.String()).
+			Msg("Failed to publish driver matching event")
 		// Don't fail the request, just log it (or implement retry)
 	}
 
@@ -122,6 +129,10 @@ func (b *bookingService) AcceptBooking(ctx context.Context, driverAccountID, boo
 		return errors.New("system error checking permissions")
 	}
 	if !allowed {
+		log.Warn().
+			Str("driver_id", driver.ID.String()).
+			Str("booking_id", bookingID.String()).
+			Msg("Driver attempted to accept booking without the ride assignment to them")
 		return errors.New("you are not authorized to accept this ride")
 	}
 
@@ -129,9 +140,20 @@ func (b *bookingService) AcceptBooking(ctx context.Context, driverAccountID, boo
 	// We try to update ONLY if status is still REQUESTED.
 	err = b.bookingRepo.AssignDriverIfAvailable(ctx, bookingID, driver.ID)
 	if err != nil {
+		log.Warn().
+			Str("driver_id", driver.ID.String()).
+			Str("booking_id", bookingID.String()).
+			Msg("Failed to assign driver to booking - likely already assigned")
 		return errors.New("booking is no longer available or system error")
 	}
-	return nil
+
+	// Log success
+	log.Info().
+		Str("booking_id", bookingID.String()).
+		Str("driver_id", driver.ID.String()).
+		Msg("Booking accepted by driver")
+
+	return b.driverRepo.UpdateAvailability(ctx, driver.ID, false)
 }
 
 // CancelBooking Driver cancels a ride
@@ -153,7 +175,7 @@ func (b *bookingService) CancelBooking(ctx context.Context, driverAccountID, boo
 		return errors.New("driver not assigned to this booking")
 	}
 
-	if booking.Status != models.BookingStatusRequested && booking.Status != models.BookingStatusAccepted {
+	if booking.Status.IsCancellable() {
 		return errors.New("booking cannot be cancelled at this stage")
 	}
 
@@ -161,10 +183,19 @@ func (b *bookingService) CancelBooking(ctx context.Context, driverAccountID, boo
 	booking.Status = models.BookingStatusCancelled
 	booking.DriverId = nil
 
+	if err := b.bookingRepo.Update(ctx, booking); err != nil {
+		return err
+	}
+
+	log.Info().
+		Str("booking_id", booking.ID.String()).
+		Str("driver_id", driver.ID.String()).
+		Msg("Booking cancelled by driver")
+
 	// TODO: Notify Passenger about cancellation
 	// TODO: Re-emit event to "DriverMatchingService" to find another driver
 
-	return b.bookingRepo.Update(ctx, booking)
+	return b.driverRepo.UpdateAvailability(ctx, driver.ID, true)
 }
 
 // StartRide Driver verifies OTP and starts
@@ -192,12 +223,20 @@ func (b *bookingService) StartRide(ctx context.Context, driverAccountID, booking
 
 	// 4. Validate OTP
 	if booking.RideStartOTPId == nil || !b.otpService.ValidateOTP(ctx, *booking.RideStartOTPId, otpCode) {
+		log.Warn().
+			Str("booking_id", booking.ID.String()).
+			Str("driver_id", driver.ID.String()).
+			Msg("Invalid OTP provided to start ride")
 		return errors.New("invalid OTP code")
 	}
 
 	// 5. Update Booking Status to STARTED
 	booking.Status = models.BookingStatusStarted
-	return b.bookingRepo.Update(ctx, booking)
+	if err := b.bookingRepo.Update(ctx, booking); err != nil {
+		return err
+	}
+	log.Info().Str("booking_id", bookingID.String()).Msg("Ride started")
+	return nil
 }
 
 // EndRide Driver completes the trip
@@ -225,7 +264,16 @@ func (b *bookingService) EndRide(ctx context.Context, driverAccountID, bookingID
 
 	// 4. Update Booking Status to COMPLETED
 	booking.Status = models.BookingStatusCompleted
-	return b.bookingRepo.Update(ctx, booking)
+	if err := b.bookingRepo.Update(ctx, booking); err != nil {
+		return err
+	}
+
+	log.Info().
+		Str("booking_id", bookingID.String()).
+		Str("driver_id", driver.ID.String()).
+		Msg("Ride completed by driver")
+
+	return b.driverRepo.UpdateAvailability(ctx, driver.ID, true)
 }
 
 func (b *bookingService) RateRide(ctx context.Context, bookingID uuid.UUID, rating int, note string, isPassenger bool) error {
@@ -233,6 +281,10 @@ func (b *bookingService) RateRide(ctx context.Context, bookingID uuid.UUID, rati
 	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
 		return err
+	}
+
+	if booking.Status != models.BookingStatusCompleted {
+		return errors.New("ride can be rated only after completion")
 	}
 
 	// 2. Create Review
@@ -253,7 +305,11 @@ func (b *bookingService) RateRide(ctx context.Context, bookingID uuid.UUID, rati
 	}
 
 	if booking.DriverId == nil {
-		return errors.New("no driver assigned to this booking")
+		// Ideally this should not happen if the ride was completed
+		log.Warn().
+			Str("booking_id", booking.ID.String()).
+			Msg("No driver assigned to booking while rating by driver")
+		return errors.New("no driver assigned")
 	}
 	review.DriverID = booking.DriverId
 	return b.bookingRepo.SaveReviewAndRecalculatePassengerRating(ctx, bookingID, review)

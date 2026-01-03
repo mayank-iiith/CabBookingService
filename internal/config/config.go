@@ -21,6 +21,7 @@ type JWTConfig struct {
 type Config struct {
 	Environment string `env:"APP_ENV" envDefault:"development"`
 	APIPort     string `env:"API_PORT" envDefault:"8080"`
+	LogLevel    string `env:"LOG_LEVEL" envDefault:"info"`
 
 	db.PostgresConfig
 	JWTConfig
