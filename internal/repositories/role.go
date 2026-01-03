@@ -1,13 +1,15 @@
 package repositories
 
 import (
+	"CabBookingService/internal/db"
 	"CabBookingService/internal/models"
+	"context"
 
 	"gorm.io/gorm"
 )
 
 type RoleRepository interface {
-	GetByName(name string) (*models.Role, error)
+	GetByName(ctx context.Context, name string) (*models.Role, error)
 }
 
 type gormRoleRepository struct {
@@ -18,10 +20,12 @@ func NewGormRoleRepository(db *gorm.DB) RoleRepository {
 	return &gormRoleRepository{db: db}
 }
 
-func (g *gormRoleRepository) GetByName(name string) (*models.Role, error) {
+func (r *gormRoleRepository) GetByName(ctx context.Context, name string) (*models.Role, error) {
+	tx := db.NewGormTx(ctx, r.db)
+
 	var role models.Role
 	// We use "name = ?" to find the role (e.g., "ROLE_PASSENGER")
-	err := g.db.Where("name = ?", name).First(&role).Error
+	err := tx.Where("name = ?", name).First(&role).Error
 	if err != nil {
 		return nil, err
 	}

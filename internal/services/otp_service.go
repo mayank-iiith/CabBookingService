@@ -3,6 +3,7 @@ package services
 import (
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
+	"context"
 	"math/rand"
 	"strconv"
 	"time"
@@ -11,8 +12,8 @@ import (
 )
 
 type OTPService interface {
-	GenerateOTP(phoneNumber string) (*models.OTP, error)
-	ValidateOTP(otpID uuid.UUID, code string) bool
+	GenerateOTP(ctx context.Context, phoneNumber string) (*models.OTP, error)
+	ValidateOTP(ctx context.Context, otpID uuid.UUID, code string) bool
 }
 
 type otpService struct {
@@ -23,7 +24,7 @@ func NewOTPService(otpRepo repositories.OTPRepository) OTPService {
 	return &otpService{otpRepo: otpRepo}
 }
 
-func (s *otpService) GenerateOTP(phoneNumber string) (*models.OTP, error) {
+func (s *otpService) GenerateOTP(ctx context.Context, phoneNumber string) (*models.OTP, error) {
 	// Simple 4-digit random code
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	code := strconv.Itoa(1000 + r.Intn(9000))
@@ -41,15 +42,15 @@ func (s *otpService) GenerateOTP(phoneNumber string) (*models.OTP, error) {
 		ExpiresAt:    now.Add(60 * time.Minute),
 	}
 
-	if err := s.otpRepo.Create(otp); err != nil {
+	if err := s.otpRepo.Create(ctx, otp); err != nil {
 		return nil, err
 	}
 
 	return otp, nil
 }
 
-func (s *otpService) ValidateOTP(otpID uuid.UUID, code string) bool {
-	otp, err := s.otpRepo.GetById(otpID)
+func (s *otpService) ValidateOTP(ctx context.Context, otpID uuid.UUID, code string) bool {
+	otp, err := s.otpRepo.GetById(ctx, otpID)
 	if err != nil {
 		return false
 	}

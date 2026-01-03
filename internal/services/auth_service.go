@@ -3,6 +3,7 @@ package services
 import (
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
+	"context"
 	"errors"
 	"time"
 
@@ -17,9 +18,9 @@ var (
 )
 
 type AuthService interface {
-	RegisterPassenger(username, password, name, phone string) (*models.Passenger, error)
-	RegisterDriver(username, password, name, phone, plate, carModel string) (*models.Driver, error)
-	Login(username, password string) (string, error)
+	RegisterPassenger(ctx context.Context, username, password, name, phone string) (*models.Passenger, error)
+	RegisterDriver(ctx context.Context, username, password, name, phone, plate, carModel string) (*models.Driver, error)
+	Login(ctx context.Context, username, password string) (string, error)
 }
 
 type authService struct {
@@ -53,14 +54,14 @@ func NewAuthService(
 	}
 }
 
-func (a authService) RegisterPassenger(username, password, name, phoneNumber string) (*models.Passenger, error) {
+func (a authService) RegisterPassenger(ctx context.Context, username, password, name, phoneNumber string) (*models.Passenger, error) {
 	// 1. Check if username already exists
-	if _, err := a.accountRepo.GetByUsername(username); err == nil {
+	if _, err := a.accountRepo.GetByUsername(ctx, username); err == nil {
 		return nil, ErrUsernameAlreadyExists
 	}
 
 	// 2. Fetch Roles
-	role, err := a.roleRepo.GetByName("ROLE_PASSENGER")
+	role, err := a.roleRepo.GetByName(ctx, "ROLE_PASSENGER")
 	if err != nil {
 		return nil, errors.New("system error: passenger role not found")
 	}
@@ -114,14 +115,14 @@ func (a authService) RegisterPassenger(username, password, name, phoneNumber str
 	return &passenger, nil
 }
 
-func (a authService) RegisterDriver(username, password, name, phone, plate, carModel string) (*models.Driver, error) {
+func (a authService) RegisterDriver(ctx context.Context, username, password, name, phone, plate, carModel string) (*models.Driver, error) {
 	// 1. Check if username already exists
-	if _, err := a.accountRepo.GetByUsername(username); err == nil {
+	if _, err := a.accountRepo.GetByUsername(ctx, username); err == nil {
 		return nil, ErrUsernameAlreadyExists
 	}
 
 	// 2. Fetch Roles
-	role, err := a.roleRepo.GetByName("ROLE_DRIVER")
+	role, err := a.roleRepo.GetByName(ctx, "ROLE_DRIVER")
 	if err != nil {
 		return nil, errors.New("system error: driver role not found")
 	}
@@ -190,8 +191,8 @@ func (a authService) RegisterDriver(username, password, name, phone, plate, carM
 	return &driver, nil
 }
 
-func (a authService) Login(username, password string) (string, error) {
-	account, err := a.accountRepo.GetByUsername(username)
+func (a authService) Login(ctx context.Context, username, password string) (string, error) {
+	account, err := a.accountRepo.GetByUsername(ctx, username)
 	if err != nil {
 		return "", errors.New("invalid username or password")
 	}

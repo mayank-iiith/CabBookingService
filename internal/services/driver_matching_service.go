@@ -1,9 +1,9 @@
 package services
 
 import (
-	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services/queue"
+	"context"
 	"fmt"
 	"log"
 
@@ -65,9 +65,10 @@ func (s *driverMatchingService) StartConsuming() error {
 
 func (s *driverMatchingService) handleDriverMatching(bookingID uuid.UUID) {
 	log.Printf("[DriverMatching] Handling driver matching for booking ID: %s\n", bookingID)
+	ctx := context.Background() // TODO: Either pass context from message or create with timeout
 
 	// 1. Fetch Booking
-	booking, err := s.bookingRepo.GetByID(bookingID)
+	booking, err := s.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
 		log.Printf("Error fetching booking %s: %v", bookingID, err)
 		return
@@ -82,12 +83,10 @@ func (s *driverMatchingService) handleDriverMatching(bookingID uuid.UUID) {
 	}
 
 	// 3. Fetch Full Driver Profiles
-	var candidateDrivers []models.Driver
-	for _, id := range nearbyDriverIDs {
-		driver, err := s.driverRepo.GetByAccountID(id)
-		if err == nil {
-			candidateDrivers = append(candidateDrivers, *driver)
-		}
+	candidateDrivers, err := s.driverRepo.GetByAccountIDs(ctx, nearbyDriverIDs)
+	if err != nil {
+		log.Printf("Error fetching driver profiles for booking %s: %v", bookingID, err)
+		return
 	}
 
 	// 4. Apply Filters
@@ -101,7 +100,7 @@ func (s *driverMatchingService) handleDriverMatching(bookingID uuid.UUID) {
 		return
 	}
 
-	if err := s.bookingRepo.AddNotifiedDrivers(bookingID, validDrivers); err != nil {
+	if err := s.bookingRepo.AddNotifiedDrivers(ctx, bookingID, validDrivers); err != nil {
 		log.Printf("Error adding notified drivers for booking %s: %v", bookingID, err)
 		return
 	}

@@ -1,16 +1,18 @@
 package repositories
 
 import (
+	"CabBookingService/internal/db"
 	"CabBookingService/internal/models"
+	"context"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type PassengerRepository interface {
-	Create(passenger *models.Passenger) error
-	GetByID(id uuid.UUID) (*models.Passenger, error)
-	GetByAccountID(accountID uuid.UUID) (*models.Passenger, error)
+	Create(ctx context.Context, passenger *models.Passenger) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Passenger, error)
+	GetByAccountID(ctx context.Context, accountID uuid.UUID) (*models.Passenger, error)
 }
 
 type gormPassengerRepository struct {
@@ -21,15 +23,17 @@ func NewGormPassengerRepository(db *gorm.DB) PassengerRepository {
 	return &gormPassengerRepository{db: db}
 }
 
-func (g *gormPassengerRepository) Create(passenger *models.Passenger) error {
-	return g.db.Create(passenger).Error
+func (r *gormPassengerRepository) Create(ctx context.Context, passenger *models.Passenger) error {
+	tx := db.NewGormTx(ctx, r.db)
+	return tx.Create(passenger).Error
 }
 
-func (g *gormPassengerRepository) GetByID(id uuid.UUID) (*models.Passenger, error) {
+func (r *gormPassengerRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Passenger, error) {
+	tx := db.NewGormTx(ctx, r.db)
+
 	var passenger models.Passenger
 	// Preload Account to get username/email
-	err := g.db.
-		Where("id = ?", id).
+	err := tx.Where("id = ?", id).
 		Preload("Account").
 		First(&passenger).Error
 	if err != nil {
@@ -38,9 +42,13 @@ func (g *gormPassengerRepository) GetByID(id uuid.UUID) (*models.Passenger, erro
 	return &passenger, nil
 }
 
-func (g *gormPassengerRepository) GetByAccountID(accountID uuid.UUID) (*models.Passenger, error) {
+func (r *gormPassengerRepository) GetByAccountID(ctx context.Context, accountID uuid.UUID) (*models.Passenger, error) {
+	tx := db.NewGormTx(ctx, r.db)
+
 	var passenger models.Passenger
-	err := g.db.Where("account_id = ?", accountID).Preload("Account").First(&passenger).Error
+	err := tx.Where("account_id = ?", accountID).
+		Preload("Account").
+		First(&passenger).Error
 	if err != nil {
 		return nil, err
 	}

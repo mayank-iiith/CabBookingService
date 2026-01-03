@@ -68,7 +68,7 @@ func AuthMiddleware(jwtSecret string, accountRepo repositories.AccountRepository
 				return
 			}
 
-			account, err := accountRepo.GetByID(uid)
+			account, err := accountRepo.GetByID(r.Context(), uid)
 			if err != nil {
 				helper.RespondWithError(w, http.StatusUnauthorized, "Account not found")
 				return

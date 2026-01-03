@@ -8,6 +8,10 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
+const (
+	EnvDevelopment = "development"
+)
+
 type JWTConfig struct {
 	JWTSecret    string `env:"JWT_SECRET" envDefault:"default_secret"`
 	JWTExpiresIn int64  `env:"JWT_EXPIRES_IN" envDefault:"3600"` // in seconds
@@ -15,7 +19,8 @@ type JWTConfig struct {
 
 // Config holds all configuration for the application
 type Config struct {
-	APIPort string `env:"API_PORT" envDefault:"8080"`
+	Environment string `env:"APP_ENV" envDefault:"development"`
+	APIPort     string `env:"API_PORT" envDefault:"8080"`
 
 	db.PostgresConfig
 	JWTConfig
@@ -29,4 +34,9 @@ func NewConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed togo parse env vars: %w", err)
 	}
 	return config, nil
+}
+
+// IsDevelopment checks if the current environment is development
+func (c *Config) IsDevelopment() bool {
+	return c.Environment == EnvDevelopment
 }

@@ -61,7 +61,7 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Add Validations
 
-	booking, err := h.bookingService.CreateBooking(account.ID, req.PickupLat, req.PickupLon, req.DropoffLat, req.DropoffLon)
+	booking, err := h.bookingService.CreateBooking(r.Context(), account.ID, req.PickupLat, req.PickupLon, req.DropoffLat, req.DropoffLon)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -131,9 +131,9 @@ func (h *BookingHandler) RateRide(w http.ResponseWriter, r *http.Request) {
 
 	// 5. Call Service to Rate Ride
 	if isPassenger {
-		err = h.bookingService.RateRide(bookingID, req.Rating, req.Note, isPassenger)
+		err = h.bookingService.RateRide(r.Context(), bookingID, req.Rating, req.Note, isPassenger)
 	} else {
-		err = h.bookingService.RateRide(bookingID, req.Rating, req.Note, !isPassenger)
+		err = h.bookingService.RateRide(r.Context(), bookingID, req.Rating, req.Note, !isPassenger)
 	}
 
 	helper.RespondWithJSON(w, http.StatusOK, map[string]string{"status": "rating submitted"})

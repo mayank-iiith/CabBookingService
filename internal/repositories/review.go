@@ -1,13 +1,15 @@
 package repositories
 
 import (
+	"CabBookingService/internal/db"
 	"CabBookingService/internal/models"
+	"context"
 
 	"gorm.io/gorm"
 )
 
 type ReviewRepository interface {
-	Create(review *models.Review) error
+	Create(ctx context.Context, review *models.Review) error
 }
 
 type gormReviewRepository struct {
@@ -18,6 +20,7 @@ func NewGormReviewRepository(db *gorm.DB) ReviewRepository {
 	return &gormReviewRepository{db: db}
 }
 
-func (r *gormReviewRepository) Create(review *models.Review) error {
-	return r.db.Create(review).Error
+func (r *gormReviewRepository) Create(ctx context.Context, review *models.Review) error {
+	tx := db.NewGormTx(ctx, r.db)
+	return tx.Create(review).Error
 }

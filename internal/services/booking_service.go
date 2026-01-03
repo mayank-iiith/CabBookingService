@@ -4,6 +4,7 @@ import (
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services/queue"
+	"context"
 	"errors"
 	"log"
 	"log/slog"
@@ -13,13 +14,13 @@ import (
 )
 
 type BookingService interface {
-	CreateBooking(passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64) (*models.Booking, error)
-	AcceptBooking(driverAccountID, bookingID uuid.UUID) error
-	CancelBooking(driverAccountID, bookingID uuid.UUID) error
-	StartRide(driverAccountID, bookingID uuid.UUID, otpCode string) error
-	EndRide(driverAccountID, bookingID uuid.UUID) error
-	RateRide(bookingID uuid.UUID, rating int, note string, isPassenger bool) error
-	GetPendingRides(driverAccountID uuid.UUID) ([]models.Booking, error)
+	CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64) (*models.Booking, error)
+	AcceptBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
+	CancelBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
+	StartRide(ctx context.Context, driverAccountID, bookingID uuid.UUID, otpCode string) error
+	EndRide(ctx context.Context, driverAccountID, bookingID uuid.UUID) error
+	RateRide(ctx context.Context, bookingID uuid.UUID, rating int, note string, isPassenger bool) error
+	GetPendingRides(ctx context.Context, driverAccountID uuid.UUID) ([]models.Booking, error)
 
 	// TODO: Add method AssignDriver(bookingID, driverID)
 }
@@ -55,16 +56,16 @@ func NewBookingService(
 }
 
 // CreateBooking Passenger requests a ride
-func (b *bookingService) CreateBooking(passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64) (*models.Booking, error) {
+func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID uuid.UUID, pickupLatitude, pickupLongitude, dropoffLatitude, dropoffLongitude float64) (*models.Booking, error) {
 	// 1. Get Passenger Profile from Account ID
-	passenger, err := b.passengerRepo.GetByAccountID(passengerAccountID)
+	passenger, err := b.passengerRepo.GetByAccountID(ctx, passengerAccountID)
 	if err != nil {
 		return nil, err
 	}
 	slog.Debug("[BookingService] CreateBooking", slog.String("passengerID", passenger.ID.String()), slog.String("accountID", passengerAccountID.String()))
 
 	// 2. Generate OTP for ride start
-	otp, err := b.otpService.GenerateOTP(passenger.PhoneNumber)
+	otp, err := b.otpService.GenerateOTP(ctx, passenger.PhoneNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +90,7 @@ func (b *bookingService) CreateBooking(passengerAccountID uuid.UUID, pickupLatit
 		DropoffLongitude: dropoffLongitude,
 	}
 
-	if err := b.bookingRepo.Create(booking); err != nil {
+	if err := b.bookingRepo.Create(ctx, booking); err != nil {
 		return nil, err
 	}
 	slog.Debug("[BookingService] Created Booking", slog.String("bookingID", booking.ID.String()), slog.String("passengerID", passenger.ID.String()), slog.String("accountID", passengerAccountID.String()))
@@ -107,15 +108,15 @@ func (b *bookingService) CreateBooking(passengerAccountID uuid.UUID, pickupLatit
 }
 
 // AcceptBooking Driver accepts a ride
-func (b *bookingService) AcceptBooking(driverAccountID, bookingID uuid.UUID) error {
+func (b *bookingService) AcceptBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error {
 	// 1. Get Driver Profile from Account ID
-	driver, err := b.driverRepo.GetByAccountID(driverAccountID)
+	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
 	if err != nil {
 		return err
 	}
 
 	// 2. Get Booking by ID
-	booking, err := b.bookingRepo.GetByID(bookingID)
+	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
 		return err
 	}
@@ -127,7 +128,7 @@ func (b *bookingService) AcceptBooking(driverAccountID, bookingID uuid.UUID) err
 	}
 
 	// Check if this driver was actually notified/authorized for this ride
-	allowed, err := b.bookingRepo.IsDriverNotified(bookingID, driver.ID)
+	allowed, err := b.bookingRepo.IsDriverNotified(ctx, bookingID, driver.ID)
 	if err != nil {
 		return errors.New("system error checking permissions")
 	}
@@ -143,19 +144,19 @@ func (b *bookingService) AcceptBooking(driverAccountID, bookingID uuid.UUID) err
 	booking.DriverId = &driver.ID
 	booking.Status = models.BookingStatusAccepted
 
-	return b.bookingRepo.Update(booking)
+	return b.bookingRepo.Update(ctx, booking)
 }
 
 // CancelBooking Driver cancels a ride
-func (b *bookingService) CancelBooking(driverAccountID, bookingID uuid.UUID) error {
+func (b *bookingService) CancelBooking(ctx context.Context, driverAccountID, bookingID uuid.UUID) error {
 	// 1. Get Driver Profile from Account ID
-	driver, err := b.driverRepo.GetByAccountID(driverAccountID)
+	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
 	if err != nil {
 		return err
 	}
 
 	// 2. Get Booking by ID
-	booking, err := b.bookingRepo.GetByID(bookingID)
+	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
 		return err
 	}
@@ -176,19 +177,19 @@ func (b *bookingService) CancelBooking(driverAccountID, bookingID uuid.UUID) err
 	// TODO: Notify Passenger about cancellation
 	// TODO: Re-emit event to "DriverMatchingService" to find another driver
 
-	return b.bookingRepo.Update(booking)
+	return b.bookingRepo.Update(ctx, booking)
 }
 
 // StartRide Driver verifies OTP and starts
-func (b *bookingService) StartRide(driverAccountID, bookingID uuid.UUID, otpCode string) error {
+func (b *bookingService) StartRide(ctx context.Context, driverAccountID, bookingID uuid.UUID, otpCode string) error {
 	// 1. Get Driver Profile from Account ID
-	driver, err := b.driverRepo.GetByAccountID(driverAccountID)
+	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
 	if err != nil {
 		return err
 	}
 
 	// 2. Get Booking by ID
-	booking, err := b.bookingRepo.GetByID(bookingID)
+	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
 		return err
 	}
@@ -203,25 +204,25 @@ func (b *bookingService) StartRide(driverAccountID, bookingID uuid.UUID, otpCode
 	}
 
 	// 4. Validate OTP
-	if booking.RideStartOTPId == nil || !b.otpService.ValidateOTP(*booking.RideStartOTPId, otpCode) {
+	if booking.RideStartOTPId == nil || !b.otpService.ValidateOTP(ctx, *booking.RideStartOTPId, otpCode) {
 		return errors.New("invalid OTP code")
 	}
 
 	// 5. Update Booking Status to STARTED
 	booking.Status = models.BookingStatusStarted
-	return b.bookingRepo.Update(booking)
+	return b.bookingRepo.Update(ctx, booking)
 }
 
 // EndRide Driver completes the trip
-func (b *bookingService) EndRide(driverAccountID, bookingID uuid.UUID) error {
+func (b *bookingService) EndRide(ctx context.Context, driverAccountID, bookingID uuid.UUID) error {
 	// 1. Get Driver Profile from Account ID
-	driver, err := b.driverRepo.GetByAccountID(driverAccountID)
+	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
 	if err != nil {
 		return err
 	}
 
 	// 2. Get Booking by ID
-	booking, err := b.bookingRepo.GetByID(bookingID)
+	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
 		return err
 	}
@@ -237,12 +238,12 @@ func (b *bookingService) EndRide(driverAccountID, bookingID uuid.UUID) error {
 
 	// 4. Update Booking Status to COMPLETED
 	booking.Status = models.BookingStatusCompleted
-	return b.bookingRepo.Update(booking)
+	return b.bookingRepo.Update(ctx, booking)
 }
 
-func (b *bookingService) RateRide(bookingID uuid.UUID, rating int, note string, isPassenger bool) error {
+func (b *bookingService) RateRide(ctx context.Context, bookingID uuid.UUID, rating int, note string, isPassenger bool) error {
 	// 1. Get Booking by ID
-	booking, err := b.bookingRepo.GetByID(bookingID)
+	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
 	if err != nil {
 		return err
 	}
@@ -261,23 +262,23 @@ func (b *bookingService) RateRide(bookingID uuid.UUID, rating int, note string, 
 
 	if isPassenger {
 		review.PassengerId = &booking.PassengerId
-		return b.bookingRepo.SaveReviewAndRecalculateDriverRating(bookingID, review)
+		return b.bookingRepo.SaveReviewAndRecalculateDriverRating(ctx, bookingID, review)
 	}
 
 	if booking.DriverId == nil {
 		return errors.New("no driver assigned to this booking")
 	}
 	review.DriverID = booking.DriverId
-	return b.bookingRepo.SaveReviewAndRecalculatePassengerRating(bookingID, review)
+	return b.bookingRepo.SaveReviewAndRecalculatePassengerRating(ctx, bookingID, review)
 }
 
-func (b *bookingService) GetPendingRides(driverAccountID uuid.UUID) ([]models.Booking, error) {
+func (b *bookingService) GetPendingRides(ctx context.Context, driverAccountID uuid.UUID) ([]models.Booking, error) {
 	// 1. Get Driver Profile from Account ID
-	driver, err := b.driverRepo.GetByAccountID(driverAccountID)
+	driver, err := b.driverRepo.GetByAccountID(ctx, driverAccountID)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. Fetch Pending Rides
-	return b.bookingRepo.GetPendingBookingsForDriver(driver.ID)
+	return b.bookingRepo.GetPendingBookingsForDriver(ctx, driver.ID)
 }

@@ -49,7 +49,7 @@ func (h *DriverHandler) AcceptBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Call Service to accept booking
-	err = h.bookingService.AcceptBooking(account.ID, bookingID)
+	err = h.bookingService.AcceptBooking(r.Context(), account.ID, bookingID)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
@@ -87,7 +87,7 @@ func (h *DriverHandler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Call Service to cancel booking
-	err = h.bookingService.CancelBooking(account.ID, bookingID)
+	err = h.bookingService.CancelBooking(r.Context(), account.ID, bookingID)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
@@ -135,7 +135,7 @@ func (h *DriverHandler) StartRide(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Call Service to start ride
-	err = h.bookingService.StartRide(account.ID, bookingID, req.OTP)
+	err = h.bookingService.StartRide(r.Context(), account.ID, bookingID, req.OTP)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
@@ -173,7 +173,7 @@ func (h *DriverHandler) EndRide(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Call Service to end ride
-	err = h.bookingService.EndRide(account.ID, bookingID)
+	err = h.bookingService.EndRide(r.Context(), account.ID, bookingID)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
@@ -195,7 +195,7 @@ func (h *DriverHandler) ListPendingRides(w http.ResponseWriter, r *http.Request)
 	}
 
 	// 2. Call Service to get pending bookings
-	bookings, err := h.bookingService.GetPendingRides(account.ID)
+	bookings, err := h.bookingService.GetPendingRides(r.Context(), account.ID)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
