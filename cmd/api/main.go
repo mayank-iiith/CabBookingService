@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	_ "CabBookingService/docs"
 	"CabBookingService/internal/config"
 	"CabBookingService/internal/controllers/v1"
 	"CabBookingService/internal/db"
@@ -18,21 +17,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 const (
 	v1Route = "/v1"
 )
 
-// @title           Cab Booking Service API
-// @version         1.0
-// @description     Cab Booking Backend Service in Go.
-// @host            localhost:8080
-// @BasePath        /v1
-// @securityDefinitions.apikey BearerAuth
-// @in              header
-// @name            Authorization
 func main() {
 	// 1. Load configuration
 	cfg, err := config.NewConfig()
@@ -65,9 +55,6 @@ func main() {
 	// Mount v1 routes
 	// All v1.NewV1Router routes will be prefixed with /v1
 	r.Mount(v1Route, v1.NewV1Router(cfg, dbConn))
-
-	// Swagger UI Route
-	r.Get("/swagger/*", httpSwagger.WrapHandler)
 
 	// --- End Routes ---
 
