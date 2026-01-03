@@ -26,6 +26,8 @@ type BookingRepository interface {
 	SaveReviewAndRecalculatePassengerRating(ctx context.Context, bookingID uuid.UUID, review *models.Review) error
 
 	GetPendingBookingsForDriver(ctx context.Context, driverID uuid.UUID) ([]models.Booking, error)
+
+	AssignDriverIfAvailable(ctx context.Context, bookingID uuid.UUID, driverID uuid.UUID) error
 }
 
 type gormBookingRepository struct {
@@ -178,4 +180,28 @@ func (r *gormBookingRepository) GetPendingBookingsForDriver(ctx context.Context,
 		return nil, err
 	}
 	return bookings, nil
+}
+
+// Implementation
+func (r *gormBookingRepository) AssignDriverIfAvailable(ctx context.Context, bookingID uuid.UUID, driverID uuid.UUID) error {
+	tx := db.NewGormTx(ctx, r.db)
+
+	// UPDATE bookings SET status='ACCEPTED', driver_id=?
+	// WHERE id=? AND status='REQUESTED'
+	result := tx.Model(&models.Booking{}).
+		Where("id = ? AND status = ?", bookingID, models.BookingStatusRequested).
+		Updates(map[string]interface{}{
+			"status":    models.BookingStatusAccepted,
+			"driver_id": driverID,
+		})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound // Or custom error: "booking not available"
+	}
+
+	return nil
 }

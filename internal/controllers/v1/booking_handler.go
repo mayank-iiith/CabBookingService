@@ -53,6 +53,8 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Add Authorization: Only passengers can book
+
 	var req CreateBookingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		helper.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
@@ -60,6 +62,10 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Add Validations
+	//	if req.PickupLat == 0 || req.PickupLon == 0 || req.DropoffLat == 0 || req.DropoffLon == 0 {
+	//		helper.RespondWithError(w, http.StatusBadRequest, "All location fields are required")
+	//		return
+	//	}
 
 	booking, err := h.bookingService.CreateBooking(r.Context(), account.ID, req.PickupLat, req.PickupLon, req.DropoffLat, req.DropoffLon)
 	if err != nil {
@@ -87,21 +93,14 @@ type RateRequest struct {
 	Note   string `json:"note"`
 }
 
-// RateRide godoc
-// @Summary      Rate a completed ride
-// @Tags         Passenger
-// @Security     BearerAuth
-// @Param        bookingId path string true "Booking ID"
-// @Param        request body RateRequest true "Rating"
-// @Success      200  {object}  map[string]string
-// @Router       /bookings/{bookingId}/rate [post]
+// RateRide POST /bookings/{bookingId}/rate
 func (h *BookingHandler) RateRide(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	//account, ok := r.Context().Value(AccountKey).(*models.Account)
-	//if !ok {
-	//	helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
-	//	return
-	//}
+	account, ok := r.Context().Value(AccountKey).(*models.Account)
+	if !ok {
+		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 
 	// 2. Parse bookingId from URL
 	bookingIDStr := chi.URLParam(r, "bookingId")
@@ -127,76 +126,37 @@ func (h *BookingHandler) RateRide(w http.ResponseWriter, r *http.Request) {
 	// For now, we assume if they hit this endpoint, they act as Passenger.
 	// You should probably create a separate handler for Drivers or check account.Roles
 
-	isPassenger := true // Implementation goes here
+	isPassenger := false
+	isDriver := false
+	// Check loaded roles from Account
+	for _, role := range account.Roles {
+		if role.Name == "ROLE_PASSENGER" {
+			isPassenger = true
+		}
+		if role.Name == "ROLE_DRIVER" {
+			isDriver = true
+		}
+	}
+
+	// TODO: Logic to handle users who might be BOTH (unlikely in this simple model, but good practice)
+	// If the endpoint is hit, we act based on the user's primary intent or role.
 
 	// 5. Call Service to Rate Ride
-	if isPassenger {
-		err = h.bookingService.RateRide(r.Context(), bookingID, req.Rating, req.Note, isPassenger)
+	// Note: We changed logic slightly. Passing 'isPassenger' boolean tells service
+	// "Is the reviewer acting as a passenger?".
+	if isPassenger && !isDriver {
+		err = h.bookingService.RateRide(r.Context(), bookingID, req.Rating, req.Note, true)
+	} else if isDriver && !isPassenger {
+		err = h.bookingService.RateRide(r.Context(), bookingID, req.Rating, req.Note, false)
 	} else {
-		err = h.bookingService.RateRide(r.Context(), bookingID, req.Rating, req.Note, !isPassenger)
+		// User has both roles? Usually, you'd check if they were the driver *for this specific booking*
+		// But for now, let's default to Passenger if ambiguous, or return error.
+		// Better fix: Let the Service decide based on the ID match.
+
+		// Pass the AccountID to the service and let it figure out if this account was the driver or passenger
+		// For now, retaining your boolean signature:
+		err = h.bookingService.RateRide(r.Context(), bookingID, req.Rating, req.Note, isPassenger)
 	}
 
 	helper.RespondWithJSON(w, http.StatusOK, map[string]string{"status": "rating submitted"})
 }
-
-//func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
-//	// 1. Get the authenticated user from context (middleware should have set this)
-//	user, ok := r.Context().Value(UserKey).(*models.User)
-//	if !ok {
-//		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
-//		return
-//	}
-//
-//	// 2. Authorization: Only passengers can book
-//	if !user.IsPassenger {
-//		helper.RespondWithError(w, http.StatusForbidden, "Only passengers can request rides")
-//		return
-//	}
-//
-//	// 3. Parse and validate the request
-//	var req CreateBookingRequest
-//	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-//		helper.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
-//		return
-//	}
-//
-//	// 4. Validate input
-//	if req.PickupLat == 0 || req.PickupLon == 0 || req.DropoffLat == 0 || req.DropoffLon == 0 {
-//		helper.RespondWithError(w, http.StatusBadRequest, "All location fields are required")
-//		return
-//	}
-//	// TODO: Add more validation (e.g., valid lat/lon ranges)
-//
-//	// 5. Create the booking model
-//	now := time.Now().UTC()
-//	booking := &models.Booking{
-//		ID:               uuid.New(),
-//		PassengerID:      user.ID,
-//		Status:           models.BookingStatusRequested,
-//		PickupLatitude:   req.PickupLat,
-//		PickupLongitude:  req.PickupLon,
-//		DropoffLatitude:  req.DropoffLat,
-//		DropoffLongitude: req.DropoffLon,
-//		CreatedAt:        now,
-//		UpdatedAt:        now,
-//	}
-//
-//	// 6. Save the booking using the repository
-//	if err := h.bookingRepo.Create(booking); err != nil {
-//		helper.RespondWithError(w, http.StatusInternalServerError, "Failed to create booking")
-//		return
-//	}
-//
-//	// 7. Prepare and send the response
-//	resp := CreateBookingResponse{
-//		ID:         booking.ID.String(),
-//		Status:     booking.Status,
-//		PickupLat:  booking.PickupLatitude,
-//		PickupLon:  booking.PickupLongitude,
-//		DropoffLat: booking.DropoffLatitude,
-//		DropoffLon: booking.DropoffLongitude,
-//		CreatedAt:  booking.CreatedAt,
-//		UpdatedAt:  booking.UpdatedAt,
-//	}
-//	helper.RespondWithJSON(w, http.StatusCreated, resp)
-//}

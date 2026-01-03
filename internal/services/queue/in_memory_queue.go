@@ -1,7 +1,7 @@
 package queue
 
 import (
-	"errors"
+	"context"
 	"sync"
 )
 
@@ -16,7 +16,7 @@ func NewInMemoryQueue() *InMemoryQueue {
 	}
 }
 
-func (q *InMemoryQueue) Publish(topic string, message interface{}) error {
+func (q *InMemoryQueue) Publish(ctx context.Context, topic string, message interface{}) error {
 	q.mu.RLock()
 	ch, exists := q.topics[topic]
 	q.mu.RUnlock()
@@ -29,12 +29,15 @@ func (q *InMemoryQueue) Publish(topic string, message interface{}) error {
 		q.mu.Unlock()
 	}
 
-	// Non-blocking send (optional: drop message if full, or block)
+	// Blocking send with Context Cancellation
+	// In case the channel is full, we wait until there's space or context is done
+	// In a production system, consider using a more robust queuing mechanism to handle backpressure and retries.
 	select {
 	case ch <- message:
 		return nil
-	default:
-		return errors.New("topic queue is full")
+	case <-ctx.Done():
+		// If the context (request) times out before we can push to queue, return error
+		return ctx.Err()
 	}
 }
 

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"CabBookingService/internal/db"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"context"
@@ -98,7 +99,7 @@ func (a authService) RegisterPassenger(ctx context.Context, username, password, 
 	}
 
 	// 5. Transactionally save Account and Passenger
-	err = a.db.Transaction(func(tx *gorm.DB) error {
+	err = db.NewGormTx(ctx, a.db).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&account).Error; err != nil {
 			return err
 		}
@@ -170,7 +171,7 @@ func (a authService) RegisterDriver(ctx context.Context, username, password, nam
 	}
 
 	// 5. Transactionally save Account, Driver, and Car
-	err = a.db.Transaction(func(tx *gorm.DB) error {
+	err = db.NewGormTx(ctx, a.db).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&account).Error; err != nil {
 			return err
 		}

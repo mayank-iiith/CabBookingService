@@ -98,7 +98,7 @@ func (b *bookingService) CreateBooking(ctx context.Context, passengerAccountID u
 	// --- ASYNC LOGIC ---
 	// Instead of calling location service directly, we push to queue
 	// This makes the API response fast (Fire and Forget)
-	if err := b.messageQueue.Publish(TopicDriverMatching, booking.ID); err != nil {
+	if err := b.messageQueue.Publish(ctx, TopicDriverMatching, booking.ID); err != nil {
 		log.Printf("Failed to publish driver matching event: %v", err)
 		// Don't fail the request, just log it (or implement retry)
 	}
@@ -115,19 +115,7 @@ func (b *bookingService) AcceptBooking(ctx context.Context, driverAccountID, boo
 		return err
 	}
 
-	// 2. Get Booking by ID
-	booking, err := b.bookingRepo.GetByID(ctx, bookingID)
-	if err != nil {
-		return err
-	}
-
-	// 3. Check if Booking is still in REQUESTED status
-	if booking.Status != models.BookingStatusRequested {
-		//return ErrBookingNotAvailable
-		return errors.New("booking is no longer available")
-	}
-
-	// Check if this driver was actually notified/authorized for this ride
+	// 2. Check Permissions (Security) - Check if this driver was actually notified/authorized for this ride
 	allowed, err := b.bookingRepo.IsDriverNotified(ctx, bookingID, driver.ID)
 	if err != nil {
 		return errors.New("system error checking permissions")
@@ -136,15 +124,13 @@ func (b *bookingService) AcceptBooking(ctx context.Context, driverAccountID, boo
 		return errors.New("you are not authorized to accept this ride")
 	}
 
-	// TODO: Need to make sure two drivers don't accept the same ride at the same time
-	// This can be handled via DB transactions or optimistic locking
-	// Also as soon as a driver accepts, we need to stop displaying this booking to other drivers
-
-	// 4. Assign Driver
-	booking.DriverId = &driver.ID
-	booking.Status = models.BookingStatusAccepted
-
-	return b.bookingRepo.Update(ctx, booking)
+	// 3. Atomic Assign (Solves Race Condition)
+	// We try to update ONLY if status is still REQUESTED.
+	err = b.bookingRepo.AssignDriverIfAvailable(ctx, bookingID, driver.ID)
+	if err != nil {
+		return errors.New("booking is no longer available or system error")
+	}
+	return nil
 }
 
 // CancelBooking Driver cancels a ride
