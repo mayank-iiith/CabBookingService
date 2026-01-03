@@ -24,6 +24,6 @@ type User struct {
 	IsAdmin     bool
 }
 
-func (user *User) TableName() string {
+func (*User) TableName() string {
 	return "users"
 }

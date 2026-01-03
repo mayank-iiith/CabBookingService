@@ -1,16 +1,19 @@
 package v1
 
 import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"time"
+
 	"CabBookingService/internal/config"
 	"CabBookingService/internal/controllers/helper"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"net/http"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -68,7 +71,11 @@ func (h *UserHandler) RegisterPassenger(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// 4. Hash the password
-	hashedPassword := req.Password // TODO: Hash the password!
+	hashedPassword, err := GenerateHashFromPassword(req.Password)
+	if err != nil {
+		helper.RespondWithError(w, http.StatusInternalServerError, "Could not hash password")
+		return
+	}
 
 	// 5. Create the user model
 	user := &models.User{
@@ -133,16 +140,41 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Check password (TODO: Implement proper password hashing and comparison)
-	hashedPassword := user.Password
-	if req.Password != hashedPassword {
+	// 4. Check password
+	err = CompareHashAndPassword(user.Password, req.Password)
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}
 
-	// 5. Generate a token (TODO: Implement JWT or similar token generation)
-	token := fmt.Sprintf("dummy-token-for-user-%s", user.Username)
+	// 5. Create JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": user.ID.String(),
+		"rol": map[string]bool{
+			"passenger": user.IsPassenger,
+			"driver":    user.IsDriver,
+			"admin":     user.IsAdmin,
+		},
+		"exp": time.Now().Add(time.Duration(h.cfg.JWTExpiresIn) * time.Second).Unix(),
+		"iat": time.Now().Unix(),
+	})
+
+	// 5. Sign the token
+	tokenString, err := token.SignedString([]byte(h.cfg.JWTSecret))
+	if err != nil {
+		helper.RespondWithError(w, http.StatusInternalServerError, "Could not generate token")
+		return
+	}
 
 	// 6. Respond with the token
-	helper.RespondWithJSON(w, http.StatusOK, LoginResponse{Token: token})
+	helper.RespondWithJSON(w, http.StatusOK, LoginResponse{Token: tokenString})
+}
+
+func GenerateHashFromPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
+}
+
+func CompareHashAndPassword(hash, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 }
