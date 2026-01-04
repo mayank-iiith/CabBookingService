@@ -18,8 +18,17 @@ import (
 )
 
 var (
-	ErrUsernameAlreadyExists = errors.New("username already exists")
+	ErrUsernameAlreadyExists     = errors.New("username already exists")
+	ErrInvalidUsernameOrPassword = errors.New("invalid username or password")
 )
+
+// UserClaims extends standard JWT claims with application-specific data.
+// By embedding jwt.RegisteredClaims, we gain automatic JSON mapping for standard fields (exp, iss, sub, etc.)
+// and helper methods like GetExpirationTime().
+type UserClaims struct {
+	Roles []string `json:"roles"`
+	jwt.RegisteredClaims
+}
 
 type AuthService interface {
 	RegisterPassenger(ctx context.Context, username, password, name, phone string) (*models.Passenger, error)
@@ -252,29 +261,42 @@ func (a *authService) Login(ctx context.Context, username, password string) (str
 	account, err := a.accountRepo.GetByUsername(ctx, username)
 	if err != nil {
 		// Log failed login attempt (Security Audit)
-		log.Warn().Str("username", username).Msg("Login failed: user not found")
-		return "", errors.New("invalid username or password")
+		log.Error().Err(err).Str("username", username).Msg("Login failed: user not found")
+		return "", ErrInvalidUsernameOrPassword
 	}
 
 	if err := CompareHashAndPassword(account.Password, password); err != nil {
 		// Log failed login attempt
-		log.Warn().Str("username", username).Msg("Login failed: invalid password")
-		return "", errors.New("invalid username or password")
+		log.Error().Err(err).Str("username", username).Msg("Login failed: invalid password")
+		return "", ErrInvalidUsernameOrPassword
 	}
 
-	// Build Roles Slice
-	roles := make([]string, len(account.Roles))
+	// 3. Build Roles Slice
+	roles := make([]string, 0, len(account.Roles))
 	for _, role := range account.Roles {
 		roles = append(roles, role.Name)
 	}
 
-	// Generate JWT Token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":   account.ID.String(),
-		"roles": roles,
-		"exp":   time.Now().Add(time.Duration(a.jwtExpiry) * time.Second).Unix(),
-		"iat":   time.Now().Unix(),
-	})
+	// 4. Create Claims using jwt.RegisteredClaims
+	now := time.Now().UTC()
+	expirationTime := now.Add(time.Duration(a.jwtExpiry) * time.Second)
+
+	claims := UserClaims{
+		Roles: roles,
+		RegisteredClaims: jwt.RegisteredClaims{
+			// Standard fields as per RFC 7519
+			Issuer:    "cab-booking-service",
+			Subject:   account.ID.String(),
+			Audience:  jwt.ClaimStrings{"cab-booking-api"},
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			NotBefore: jwt.NewNumericDate(now),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        uuid.New().String(), // JTI: Unique identifier for this token
+		},
+	}
+
+	// 5. Sign Token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	tokenString, err := token.SignedString([]byte(a.jwtSecret))
 	if err != nil {

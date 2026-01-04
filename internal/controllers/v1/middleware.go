@@ -4,12 +4,13 @@ import (
 	"CabBookingService/internal/controllers/helper"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
+	"CabBookingService/internal/services"
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5/request"
 	"github.com/google/uuid"
 )
 
@@ -23,40 +24,42 @@ const (
 func AuthMiddleware(jwtSecret string, accountRepo repositories.AccountRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// 1. Get the Authorization header
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				helper.RespondWithError(w, http.StatusUnauthorized, "Authorization header required")
+			// 1. Get the bearer token from Authorization header using the library extractor
+			// This handles "Bearer " prefix stripping automatically and robustly
+			bearerToken, err := request.AuthorizationHeaderExtractor.ExtractToken(r)
+			if err != nil {
+				helper.RespondWithError(w, http.StatusUnauthorized, "Authorization header required: "+err.Error())
 				return
 			}
 
-			// 2. Remove "Bearer " prefix
-			tokenString := strings.Replace(authHeader, "Bearer ", "", 1)
+			// 2. Parse and validate the token into UserClaims
+			claims := &services.UserClaims{}
 
-			// 3. Parse and validate the token
-			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			// jwt.ParseWithClaims automatically checks exp, nbf, iat if present in RegisteredClaims
+			token, err := jwt.ParseWithClaims(bearerToken, claims, func(token *jwt.Token) (interface{}, error) {
+				// Validate the signing method is what we expect
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 				}
 				return []byte(jwtSecret), nil
 			})
 
-			if err != nil || !token.Valid {
+			if err != nil {
+				// We can handle specific JWT errors here if needed (e.g., expired vs invalid)
+				helper.RespondWithError(w, http.StatusUnauthorized, "Invalid or expired token")
+				return
+			}
+
+			if !token.Valid {
 				helper.RespondWithError(w, http.StatusUnauthorized, "Invalid token")
 				return
 			}
 
-			// 4. Get the User ID from claims
-			claims, ok := token.Claims.(jwt.MapClaims)
-			if !ok {
-				helper.RespondWithError(w, http.StatusUnauthorized, "Invalid token claims")
-				return
-			}
-
-			// In our AuthService, "sub" is the Account ID (string)
-			accountIDStr, ok := claims["sub"].(string)
-			if !ok {
-				helper.RespondWithError(w, http.StatusUnauthorized, "Invalid account ID in token")
+			// 4. Get the User ID from Subject claim
+			// RegisteredClaims.Subject maps to the "sub" JSON field
+			accountIDStr := claims.Subject
+			if accountIDStr == "" {
+				helper.RespondWithError(w, http.StatusUnauthorized, "Invalid token: missing subject")
 				return
 			}
 
@@ -64,7 +67,7 @@ func AuthMiddleware(jwtSecret string, accountRepo repositories.AccountRepository
 			// We need to parse the UUID string first if your GetByID expects uuid.UUID
 			uid, err := uuid.Parse(accountIDStr)
 			if err != nil {
-				helper.RespondWithError(w, http.StatusUnauthorized, "Invalid user ID format")
+				helper.RespondWithError(w, http.StatusUnauthorized, "Invalid user ID format in token")
 				return
 			}
 
