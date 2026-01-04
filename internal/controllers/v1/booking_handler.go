@@ -48,8 +48,8 @@ type CreateBookingResponse struct {
 
 func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -108,8 +108,8 @@ type RateRequest struct {
 // RateRide POST /bookings/{bookingId}/rate
 func (h *BookingHandler) RateRide(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}

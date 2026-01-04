@@ -1,13 +1,14 @@
 package v1
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+
 	"CabBookingService/internal/controllers/helper"
 	"CabBookingService/internal/models"
 	"CabBookingService/internal/repositories"
 	"CabBookingService/internal/services"
-	"context"
-	"fmt"
-	"net/http"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-jwt/jwt/v5/request"
@@ -89,8 +90,8 @@ func RequireRoleMiddleware(requiredRole string) func(http.Handler) http.Handler 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// 1. Get account from context
-			account, ok := r.Context().Value(AccountKey).(*models.Account)
-			if !ok || account == nil {
+			account, err := GetAccountFromContext(r.Context())
+			if err != nil {
 				helper.RespondWithError(w, http.StatusUnauthorized, "Account not found in context")
 				return
 			}
@@ -112,4 +113,17 @@ func hasRole(roles []models.Role, role string) bool {
 		}
 	}
 	return false
+}
+
+// GetAccountFromContext is a helper to safely retrieve the typed account
+func GetAccountFromContext(ctx context.Context) (*models.Account, error) {
+	val := ctx.Value(AccountKey)
+	if val == nil {
+		return nil, fmt.Errorf("account not found in context")
+	}
+	account, ok := val.(*models.Account)
+	if !ok {
+		return nil, fmt.Errorf("invalid account type in context")
+	}
+	return account, nil
 }

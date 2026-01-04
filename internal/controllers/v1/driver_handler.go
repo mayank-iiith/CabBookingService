@@ -34,8 +34,8 @@ type DriverActionResponse struct {
 // AcceptBooking - POST /v1/driver/bookings/{bookingId}/accept
 func (h *DriverHandler) AcceptBooking(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -65,8 +65,8 @@ func (h *DriverHandler) AcceptBooking(w http.ResponseWriter, r *http.Request) {
 // CancelBooking - POST /v1/driver/bookings/{bookingId}/cancel
 func (h *DriverHandler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -96,8 +96,8 @@ func (h *DriverHandler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 // StartRide - POST /v1/driver/bookings/{bookingId}/start
 func (h *DriverHandler) StartRide(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -136,8 +136,8 @@ func (h *DriverHandler) StartRide(w http.ResponseWriter, r *http.Request) {
 // EndRide - POST /v1/driver/bookings/{bookingId}/end
 func (h *DriverHandler) EndRide(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -167,8 +167,8 @@ func (h *DriverHandler) EndRide(w http.ResponseWriter, r *http.Request) {
 // ListPendingRides - GET /v1/driver/bookings/pending
 func (h *DriverHandler) ListPendingRides(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account from context (set by AuthMiddleware)
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -209,8 +209,8 @@ type ToggleAvailabilityRequest struct {
 // ToggleAvailability - PATCH /v1/driver/availability
 func (h *DriverHandler) ToggleAvailability(w http.ResponseWriter, r *http.Request) {
 	// 1. Get Account
-	account, ok := r.Context().Value(AccountKey).(*models.Account)
-	if !ok {
+	account, err := GetAccountFromContext(r.Context())
+	if err != nil {
 		helper.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
@@ -223,7 +223,7 @@ func (h *DriverHandler) ToggleAvailability(w http.ResponseWriter, r *http.Reques
 	}
 
 	// 3. Call Service
-	err := h.bookingService.ToggleDriverAvailability(r.Context(), account.ID, req.Available)
+	err = h.bookingService.ToggleDriverAvailability(r.Context(), account.ID, req.Available)
 	if err != nil {
 		helper.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
