@@ -15,11 +15,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type contextKey string
-
-const (
-	AccountKey contextKey = "account"
-)
+type accountCtxKey struct{}
 
 // AuthMiddleware verifies the JWT token and adds the user to the context
 func AuthMiddleware(jwtSecret string, accountRepo repositories.AccountRepository) func(http.Handler) http.Handler {
@@ -79,7 +75,7 @@ func AuthMiddleware(jwtSecret string, accountRepo repositories.AccountRepository
 			}
 
 			// 6. Add to context
-			ctx := context.WithValue(r.Context(), AccountKey, account)
+			ctx := context.WithValue(r.Context(), accountCtxKey{}, account)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -117,7 +113,7 @@ func hasRole(roles []models.Role, role string) bool {
 
 // GetAccountFromContext is a helper to safely retrieve the typed account
 func GetAccountFromContext(ctx context.Context) (*models.Account, error) {
-	val := ctx.Value(AccountKey)
+	val := ctx.Value(accountCtxKey{})
 	if val == nil {
 		return nil, fmt.Errorf("account not found in context")
 	}
